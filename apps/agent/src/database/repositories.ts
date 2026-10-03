@@ -215,3 +215,219 @@ export const BackupRepository = {
     stmt.run(id);
   }
 };
+
+export interface AgentRow {
+  id: string;
+  name: string;
+  installation_id: string;
+  credential_hash: string;
+  status: string;
+  last_seen: string | null;
+  last_connected: string | null;
+  version: string;
+  os: string;
+  hostname: string;
+  capabilities_json: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export const AgentRepository = {
+  createOrUpdate(agent: {
+    id: string;
+    name: string;
+    installationId: string;
+    credentialHash: string;
+    version: string;
+    os: string;
+    hostname: string;
+    capabilitiesJson: string;
+  }): void {
+    const db = getDatabase();
+    const now = new Date().toISOString();
+    const existing = db.prepare('SELECT id FROM registered_agents WHERE id = ? OR installation_id = ?').get(agent.id, agent.installationId) as { id: string } | undefined;
+
+    if (existing) {
+      const stmt = db.prepare(`
+        UPDATE registered_agents
+        SET name = ?, version = ?, os = ?, hostname = ?, capabilities_json = ?, credential_hash = ?, updated_at = ?
+        WHERE id = ?
+      `);
+      stmt.run(agent.name, agent.version, agent.os, agent.hostname, agent.capabilitiesJson, agent.credentialHash, now, existing.id);
+    } else {
+      const stmt = db.prepare(`
+        INSERT INTO registered_agents
+        (id, name, installation_id, credential_hash, status, last_seen, last_connected, version, os, hostname, capabilities_json, created_at, updated_at)
+        VALUES (?, ?, ?, ?, 'OFFLINE', ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      stmt.run(
+        agent.id,
+        agent.name,
+        agent.installationId,
+        agent.credentialHash,
+        now,
+        now,
+        agent.version,
+        agent.os,
+        agent.hostname,
+        agent.capabilitiesJson,
+        now,
+        now
+      );
+    }
+  },
+
+  findById(id: string): AgentRow | null {
+    const db = getDatabase();
+    const stmt = db.prepare('SELECT * FROM registered_agents WHERE id = ?');
+    const row = stmt.get(id) as AgentRow | undefined;
+    return row || null;
+  },
+
+  findByInstallationId(installationId: string): AgentRow | null {
+    const db = getDatabase();
+    const stmt = db.prepare('SELECT * FROM registered_agents WHERE installation_id = ?');
+    const row = stmt.get(installationId) as AgentRow | undefined;
+    return row || null;
+  },
+
+  list(): AgentRow[] {
+    const db = getDatabase();
+    const stmt = db.prepare('SELECT * FROM registered_agents ORDER BY updated_at DESC');
+    return stmt.all() as unknown as AgentRow[];
+  },
+
+  updateHeartbeat(id: string, status: string = 'ONLINE'): void {
+    const db = getDatabase();
+    const now = new Date().toISOString();
+    const stmt = db.prepare(`
+      UPDATE registered_agents
+      SET last_seen = ?, status = ?, updated_at = ?
+      WHERE id = ?
+    `);
+    stmt.run(now, status, now, id);
+  },
+
+  updateConnectionStatus(id: string, status: string, connectedNow: boolean = false): void {
+    const db = getDatabase();
+    const now = new Date().toISOString();
+    if (connectedNow) {
+      const stmt = db.prepare(`
+        UPDATE registered_agents
+        SET status = ?, last_connected = ?, last_seen = ?, updated_at = ?
+        WHERE id = ?
+      `);
+      stmt.run(status, now, now, now, id);
+    } else {
+      const stmt = db.prepare(`
+        UPDATE registered_agents
+        SET status = ?, updated_at = ?
+        WHERE id = ?
+      `);
+      stmt.run(status, now, id);
+    }
+  },
+
+  delete(id: string): void {
+    const db = getDatabase();
+    const stmt = db.prepare('DELETE FROM registered_agents WHERE id = ?');
+    stmt.run(id);
+  }
+};
+
+export interface PairingCodeRow {
+  code: string;
+  agent_id: string | null;
+  expires_at: string;
+  is_used: number;
+  created_at: string;
+}
+
+export const PairingCodeRepository = {
+  create(code: string, expiresAt: string, agentId?: string): void {
+    const db = getDatabase();
+    const now = new Date().toISOString();
+    const stmt = db.prepare(`
+      INSERT INTO pairing_codes (code, agent_id, expires_at, is_used, created_at)
+      VALUES (?, ?, ?, 0, ?)
+    `);
+    stmt.run(code, agentId || null, expiresAt, now);
+  },
+
+  findValid(code: string): PairingCodeRow | null {
+    const db = getDatabase();
+    const now = new Date().toISOString();
+    const stmt = db.prepare(`
+      SELECT * FROM pairing_codes
+      WHERE code = ? AND is_used = 0 AND expires_at > ?
+    `);
+    const row = stmt.get(code, now) as PairingCodeRow | undefined;
+    return row || null;
+  },
+
+  markUsed(code: string): void {
+    const db = getDatabase();
+    const stmt = db.prepare('UPDATE pairing_codes SET is_used = 1 WHERE code = ?');
+    stmt.run(code);
+  },
+
+  cleanExpired(): void {
+    const db = getDatabase();
+    const now = new Date().toISOString();
+    const stmt = db.prepare('DELETE FROM pairing_codes WHERE expires_at <= ? OR is_used = 1');
+    stmt.run(now);
+  }
+};
+
+export interface CommandRow {
+  id: string;
+  agent_id: string;
+  type: string;
+  payload_json: string;
+  status: string;
+  queueable: number;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export const AgentCommandRepository = {
+  create(cmd: {
+    id: string;
+    agentId: string;
+    type: string;
+    payloadJson: string;
+    status: string;
+    queueable: boolean;
+  }): void {
+    const db = getDatabase();
+    const now = new Date().toISOString();
+    const stmt = db.prepare(`
+      INSERT INTO agent_commands (id, agent_id, type, payload_json, status, queueable, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    stmt.run(cmd.id, cmd.agentId, cmd.type, cmd.payloadJson, cmd.status, cmd.queueable ? 1 : 0, now, now);
+  },
+
+  updateStatus(id: string, status: string, errorMessage?: string): void {
+    const db = getDatabase();
+    const now = new Date().toISOString();
+    const stmt = db.prepare(`
+      UPDATE agent_commands
+      SET status = ?, error_message = ?, updated_at = ?
+      WHERE id = ?
+    `);
+    stmt.run(status, errorMessage || null, now, id);
+  },
+
+  getQueuedCommands(agentId: string): CommandRow[] {
+    const db = getDatabase();
+    const stmt = db.prepare(`
+      SELECT * FROM agent_commands
+      WHERE agent_id = ? AND queueable = 1 AND status = 'COMMAND_SENT'
+      ORDER BY created_at ASC
+    `);
+    return stmt.all(agentId) as unknown as CommandRow[];
+  }
+};
+

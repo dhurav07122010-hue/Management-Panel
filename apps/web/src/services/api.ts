@@ -439,5 +439,43 @@ export const api = {
   },
   async detectJava(): Promise<{ javaPaths: string[] }> {
     return request('/api/settings/detect-java');
+  },
+
+  // Outbound Agent Management (Section 5 & 38)
+  async generatePairingCode(): Promise<{ code: string; expiresAt: string; expiresInSeconds: number }> {
+    return request('/api/agents/generate-pairing-code', { method: 'POST' });
+  },
+  async getAgents(): Promise<{ agents: Array<{
+    id: string;
+    name: string;
+    installationId: string;
+    version: string;
+    os: string;
+    hostname: string;
+    status: 'ONLINE' | 'DEGRADED' | 'OFFLINE' | 'UNKNOWN';
+    lastSeen: string | null;
+    lastSeenSecondsAgo: number | null;
+    lastConnected: string | null;
+    capabilities: Record<string, boolean>;
+    createdAt: string;
+  }> }> {
+    return request('/api/agents');
+  },
+  async getAgentDiagnostics(agentId: string): Promise<{
+    backend: 'CONNECTED' | 'DISCONNECTED';
+    websocket: 'CONNECTED' | 'DISCONNECTED' | 'CONNECTING' | 'RECONNECTING';
+    authentication: 'VALID' | 'INVALID' | 'UNPAIRED';
+    lastHeartbeatSecondsAgo: number | null;
+    latencyMs: number | null;
+    reconnectAttempts: number;
+    agentVersion: string;
+    minecraftState: string;
+    watchdogActive: boolean;
+    status: 'ONLINE' | 'DEGRADED' | 'OFFLINE' | 'UNKNOWN';
+  }> {
+    return request(`/api/agents/${agentId}/diagnostics`);
+  },
+  async unpairAgent(agentId: string): Promise<{ message: string }> {
+    return request(`/api/agents/${agentId}`, { method: 'DELETE' });
   }
 };

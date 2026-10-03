@@ -4,6 +4,7 @@ import { api } from '../services/api.js';
 import { useWebSocket } from '../hooks/useWebSocket.js';
 import { StatusBadge } from '../components/StatusBadge.js';
 import { ConfirmationDialog } from '../components/ConfirmationDialog.js';
+import { AgentCard } from '../components/AgentCard.js';
 import type { ServerHealthSummary, ServerState, ConsoleLine } from '@mc-panel/types';
 import {
   Play,
@@ -161,6 +162,9 @@ export const Dashboard: React.FC = () => {
 
   return (
     <div className="space-y-6 animate-fade-in">
+      {/* Persistent Outbound Agent Connection Card */}
+      <AgentCard />
+
       {/* Top Banner & Quick Server Controls */}
       <div className="p-6 bg-slate-900 border border-slate-800 rounded-3xl shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
         <div>

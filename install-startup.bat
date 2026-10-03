@@ -21,7 +21,7 @@ if not exist "%STARTUP_FOLDER%" (
 echo Set WshShell = CreateObject("WScript.Shell"^)
 echo ProjectDir = "%PROJECT_DIR%"
 echo WshShell.CurrentDirectory = ProjectDir
-echo WshShell.Run """" ^& ProjectDir ^& "\scripts\run-silent.bat""", 0, False
+echo WshShell.Run """" ^& ProjectDir ^& "\scripts\run-watchdog-silent.bat""", 0, False
 ) > "%STARTUP_VBS%"
 
 if exist "%STARTUP_VBS%" (

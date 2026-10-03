@@ -1,17 +1,28 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { getAuthToken, getAgentBaseUrl, refreshTunnelUrl } from '../services/api.js';
-import type { WebSocketMessage, ConsoleLine, ServerStats, PlayerInfo, ServerState } from '@mc-panel/types';
+import { getAuthToken, getAgentBaseUrl } from '../services/api.js';
+import type {
+  WebSocketMessage,
+  ConsoleLine,
+  ServerStats,
+  PlayerInfo,
+  ServerState,
+  AgentCommandAck,
+  AgentOfflineStatus
+} from '@mc-panel/types';
 
 interface UseWebSocketOptions {
   onConsole?: (line: ConsoleLine) => void;
   onStatus?: (state: ServerState, uptime: number) => void;
   onStats?: (stats: ServerStats) => void;
   onPlayers?: (players: PlayerInfo[]) => void;
+  onAgentState?: (status: AgentOfflineStatus) => void;
+  onCommandAck?: (ack: AgentCommandAck) => void;
 }
 
 export function useWebSocket(options: UseWebSocketOptions = {}) {
   const [isConnected, setIsConnected] = useState(false);
   const [isReconnecting, setIsReconnecting] = useState(false);
+  const [reconnectAttempts, setReconnectAttempts] = useState(0);
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const optionsRef = useRef(options);
@@ -29,7 +40,6 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
     let wsUrl: string;
 
     if (agentBase) {
-      // If configured with an explicit agent base (e.g. https://agent.example.com or http://192.168.1.38:3001)
       const isHttps = agentBase.startsWith('https://');
       const wsProtocol = isHttps ? 'wss:' : 'ws:';
       const cleanHost = agentBase.replace(/^https?:\/\//, '');
@@ -47,6 +57,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
       ws.onopen = () => {
         setIsConnected(true);
         setIsReconnecting(false);
+        setReconnectAttempts(0);
       };
 
       ws.onmessage = (event) => {
@@ -67,11 +78,17 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
             case 'server.players':
               optionsRef.current.onPlayers?.(msg.payload as PlayerInfo[]);
               break;
+            case 'agent.command_ack':
+              optionsRef.current.onCommandAck?.(msg.payload as AgentCommandAck);
+              break;
+            case 'agent.connected':
+              optionsRef.current.onAgentState?.('ONLINE');
+              break;
             default:
               break;
           }
         } catch {
-          // ignore parsing error
+          // ignore
         }
       };
 
@@ -79,13 +96,21 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
         setIsConnected(false);
         socketRef.current = null;
 
-        // If not closed by auth failure, schedule reconnect
+        // If not closed by auth failure, schedule reconnect with exponential backoff
         if (event.code !== 4001 && event.code !== 4003) {
           setIsReconnecting(true);
-          reconnectTimeoutRef.current = setTimeout(async () => {
-            await refreshTunnelUrl();
-            connect();
-          }, 3000);
+          setReconnectAttempts((prev) => {
+            const next = prev + 1;
+            const delays = [1000, 2000, 4000, 8000, 15000, 30000];
+            const delay = delays[Math.min(next - 1, delays.length - 1)] + Math.floor(Math.random() * 500);
+
+            if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+            reconnectTimeoutRef.current = setTimeout(() => {
+              connect();
+            }, delay);
+
+            return next;
+          });
         }
       };
 
@@ -95,8 +120,8 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
     } catch {
       setIsConnected(false);
       setIsReconnecting(true);
-      reconnectTimeoutRef.current = setTimeout(async () => {
-        await refreshTunnelUrl();
+      if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = setTimeout(() => {
         connect();
       }, 3000);
     }
@@ -127,6 +152,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
   return {
     isConnected,
     isReconnecting,
+    reconnectAttempts,
     sendCommand,
     reconnect: connect
   };

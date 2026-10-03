@@ -1,99 +1,126 @@
-# Minecraft Server Management Web Panel
+# Minecraft Server Management Control Panel & Persistent Agent
 
-> Production-grade, mobile-first private web control panel for Minecraft servers hosted on Windows. Designed specifically for Fabric with GeyserMC and Floodgate support.
-
----
-
-## 🎮 Highlights & Features
-
-- **📱 Mobile-First UI**: Native bottom navigation on Android & iPhone browsers, responsive dark gamer theme, large touch targets, collapsible desktop sidebar.
-- **⚡ Live Interactive Console**: Real-time WebSocket streaming of `stdout`/`stderr`, log search and level filtering (INFO/WARN/ERROR), auto-scroll lock, interactive command line with arrow-key history (`/say`, `/op`, `/time`, etc.).
-- **🧩 Fabric Mod Manager**:
-  - Scan installed mods with version and metadata extraction.
-  - Enable / Disable toggle without deleting files (moves between `mods/` and `mods-disabled/`).
-  - Search and 1-click install mods directly from Modrinth with SHA-512 checksum validation.
-  - Upload `.jar` files straight from your phone.
-- **🛡️ Rock-Solid Security**:
-  - Strict path traversal jail preventing escapes (`../`, drive jumping, null bytes).
-  - Bcrypt password hashing & session management with IP rate limiting.
-  - Floodgate `key.pem` secrecy (private keys are never exposed or transmitted).
-  - Pre-modification automated backups before mod changes or critical config edits.
-- **📦 Backup & Disaster Recovery**:
-  - Full ZIP snapshots of world dimensions, mods, configs, and server properties.
-  - Automatic `save-all flush` chunk commit prior to snapshot creation.
-  - Configurable automated schedule (cron) with retention limits.
-  - One-click restore with verification safeguards.
-- **🌐 Network & Bedrock Integration**:
-  - GeyserMC UDP (port 19132) configuration inspection.
-  - Floodgate key presence verification.
-  - Host LAN IP discovery for seamless local network play.
-- **🧪 Built-in Mock Mode (`MOCK_MODE=true`)**:
-  - Simulate Minecraft status, console streaming, player events, CPU/RAM stats without needing real Minecraft files installed.
+> Production-grade, mobile-friendly Minecraft server control panel with a **persistent outbound agent architecture**. Eliminates the need for flaky local tunnels, open inbound router ports, or DDNS. Built for Windows hosts running Fabric with GeyserMC & Floodgate support.
 
 ---
 
-## 🚀 Quick Start (Windows)
+## 🏗️ Architectural Overview
 
-### 1. One-Click Setup
-Double-click `setup.bat` or run:
+```
+             MOBILE / DESKTOP (Browser)
+                        │
+                        ▼
+            WEB MANAGEMENT UI (React 18 + Vite)
+                        │
+                        │ HTTPS / WSS
+                        ▼
+          CLOUD CONTROL BACKEND (Express + WebSocket Hub)
+                        │
+                        │ Persistent outbound authenticated WSS connection
+                        │ Bidirectional heartbeat & command channel
+                        ▼
+            LOCAL AGENT (Windows Host CLI / Service)
+                        │
+                        ▼
+             WINDOWS WATCHDOG SUPERVISOR
+           ┌────────────┼────────────┐
+           ▼            ▼            ▼
+       Minecraft    Files/Mods   System/Logs
+```
+
+### 🔒 Key Architectural Improvements:
+1. **No Inbound Holes / Tunnels**: The local Windows agent initiates and maintains an **outbound** persistent WebSocket Secure (WSS) connection to the Cloud Backend.
+2. **Resilience to Network Shifts**: Works reliably across PC IP changes, Wi-Fi reconnects, router reboots, and temporary internet outages with exponential backoff & jitter reconnection.
+3. **Windows Service & Watchdog**: Supervised by a dedicated watchdog that restarts the agent process if crashed or frozen, and automatically starts on Windows boot.
+4. **Idempotent Structured Command Protocol**: Commands have unique IDs (`command_xxx`), timeouts, state tracking (`COMMAND_SENT` ➔ `COMMAND_RECEIVED` ➔ `COMMAND_STARTED` ➔ `COMMAND_COMPLETED`), and safe offline queuing.
+5. **Bidirectional Heartbeat & Status Engine**: Explicit thresholds (0–20s: 🟢 Online, 20–45s: 🟡 Reconnecting, 45s+: 🔴 Offline).
+
+---
+
+## ⚡ Quick Start
+
+### 1. Install & Build
+In the project root, run:
 ```cmd
 npm install
 npm run build
 ```
 
-### 2. Launch Panel
-Double-click `start-panel.bat` or run:
+### 2. Start Cloud Control Backend & Panel
 ```cmd
-npm run start
+npm start
 ```
-The console will display your local address:
+The panel will be accessible at:
 - **Local PC**: `http://localhost:3001`
 - **Mobile / LAN**: `http://192.168.x.x:3001`
 
-### 3. First-Run Setup Wizard
-On first launch, navigate to `http://localhost:3001`. The 10-step setup wizard will guide you through:
-1. Setting an administrator password for `admin`.
-2. Choosing your Minecraft server directory.
-3. Detecting Java and server JAR.
-4. Configuring backup schedules.
-
----
-
-## 📂 Project Architecture
-
+### 3. Agent Pairing & Setup
+1. Open the Web Panel, log in, and click **Add / Pair Agent** on the Dashboard.
+2. The UI will generate a temporary, single-use pairing code (e.g. `XXXX-XXXX`).
+3. On the Windows host, run:
+```cmd
+agent.cmd pair
 ```
-minecraft-server-panel/
-├── apps/
-│   ├── agent/                 # Windows backend service (Express + ws + node:sqlite)
-│   └── web/                   # React 18 + Vite + Tailwind CSS mobile-first frontend
-├── packages/
-│   └── types/                 # Shared TypeScript models and WebSocket contracts
-├── scripts/                   # Windows launchers (setup.bat, start-panel.bat)
-├── docs/                      # Comprehensive documentation
-├── data/                      # Local SQLite database (panel.sqlite)
-└── backups/                   # Snapshot storage
-```
+4. Enter the Backend URL and the pairing code.
+5. The agent will authenticate, store credentials in `data/agent-config.json`, and transition to 🟢 **ONLINE**.
 
 ---
 
-## 📖 Documentation
+## 🛠️ Windows Service & Watchdog Management
 
-- [Installation Guide](docs/INSTALLATION.md)
-- [Windows Host & Firewall Setup](docs/WINDOWS_SETUP.md)
-- [Security Architecture](docs/SECURITY.md)
-- [System Architecture](docs/ARCHITECTURE.md)
-- [Mod Manager Guide](docs/MOD_MANAGER.md)
-- [Backups & Disaster Recovery](docs/BACKUPS.md)
-- [Remote Access (Tailscale / VPN)](docs/REMOTE_ACCESS.md)
-- [Troubleshooting & FAQ](docs/TROUBLESHOOTING.md)
+PowerShell and batch scripts are provided in `scripts/`:
+
+| Script | Purpose |
+| :--- | :--- |
+| `scripts/install-agent-service.ps1` | Registers the Agent Watchdog as a Windows Scheduled Task (starts on boot / logon) |
+| `scripts/uninstall-agent-service.ps1` | Unregisters the Agent Scheduled Task from Windows |
+| `scripts/start-agent.ps1` | Starts the Agent Watchdog in the background |
+| `scripts/stop-agent.ps1` | Stops running Agent and Watchdog processes |
+| `scripts/restart-agent.ps1` | Restarts the Agent |
+| `scripts/status-agent.ps1` | Queries Agent status and runs the Doctor diagnostic |
 
 ---
 
-## 🧪 Testing
+## 💻 Agent CLI Commands
 
-Run the automated test suite covering security path traversal guards, session authentication, and jailed file operations:
+Run commands directly via `agent.cmd`:
 
 ```cmd
-npm run test --workspace=@mc-panel/agent
+agent.cmd start              # Start outbound agent client
+agent.cmd stop               # Stop agent
+agent.cmd restart            # Restart agent
+agent.cmd pair               # Pair Windows agent to Cloud Panel
+agent.cmd unpair             # Remove local pairing credentials
+agent.cmd status             # View agent ID, status, and config
+agent.cmd doctor             # Run comprehensive environment diagnostics
+agent.cmd logs [--follow]    # Inspect or tail live agent service logs
+agent.cmd version            # Output agent version
+agent.cmd --help             # View help
 ```
-All 16 tests will run via Vitest.
+
+### 🩺 Doctor Output Example:
+```cmd
+agent.cmd doctor
+
+[OK]   Internet & DNS             : Resolved remote host (1.1.1.1)
+[OK]   Agent Configuration        : Agent ID: agent_xxxx (Gaming PC)
+[OK]   Backend Reachability       : Connected to http://localhost:3001
+[OK]   Minecraft Directory        : Found at C:\path\to\minecraft-server
+[OK]   Java Runtime               : Found: java
+[OK]   System Hardware            : 8 CPU cores, 16 GB RAM
+[OK]   Windows Startup Service    : Registered in Windows Task Scheduler
+
+Diagnosis: All critical systems are operational and ready for production management.
+```
+
+---
+
+## 🧪 Testing Suite
+
+Run the full automated test suite (including persistent agent pairing, command lifecycle, offline thresholds, and path traversal guards):
+
+```cmd
+npm test
+```
+
+All 27 automated tests pass with Vitest.

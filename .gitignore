@@ -13,7 +13,10 @@ data/*.sqlite-journal
 data/*.sqlite-shm
 data/*.sqlite-wal
 data/panel.sqlite
-data/agent-service.log
+data/*.log
+data/agent.pid
+data/agent-config.json
+data/installation-id.txt
 data/minecraft-server/
 backups/
 

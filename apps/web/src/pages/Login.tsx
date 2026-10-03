@@ -110,7 +110,7 @@ export const Login: React.FC = () => {
           <p className="text-sm text-slate-400">Sign in to manage your server</p>
         </div>
 
-        {/* Live Agent Connection Status */}
+        {/* Live Backend & Agent Status */}
         <div className="flex items-center justify-between p-2.5 px-3.5 rounded-xl bg-slate-950/70 border border-slate-800 text-xs">
           <div className="flex items-center gap-2">
             {connectionStatus === 'connected' ? (
@@ -121,18 +121,18 @@ export const Login: React.FC = () => {
               <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
             )}
             <span className={connectionStatus === 'connected' ? 'text-emerald-400 font-medium' : connectionStatus === 'checking' ? 'text-amber-300' : 'text-red-400 font-medium'}>
-              {connectionStatus === 'connected' ? 'Agent Online' : connectionStatus === 'checking' ? 'Connecting to Agent...' : 'Agent Offline / Unreachable'}
+              {connectionStatus === 'connected' ? 'Control Backend Ready' : connectionStatus === 'checking' ? 'Connecting to Backend...' : 'Backend Offline / Unreachable'}
             </span>
           </div>
           <button
             type="button"
             onClick={handleRefresh}
             disabled={isRefreshing}
-            title="Refresh Live Tunnel Discovery"
+            title="Check Backend Connection"
             className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-emerald-400 transition font-mono disabled:opacity-50"
           >
             <RotateCw className={`w-3 h-3 ${isRefreshing ? 'animate-spin' : ''}`} />
-            <span>Sync</span>
+            <span>Check</span>
           </button>
         </div>
 

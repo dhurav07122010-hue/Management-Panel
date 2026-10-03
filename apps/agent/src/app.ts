@@ -11,6 +11,7 @@ import { modsRouter } from './routes/mods.routes.js';
 import { filesRouter } from './routes/files.routes.js';
 import { backupsRouter } from './routes/backups.routes.js';
 import { geyserRouter } from './routes/geyser.routes.js';
+import { agentRouter } from './routes/agent.routes.js';
 import { settingsRouter } from './routes/settings.routes.js';
 import { errorHandler } from './middleware/error.middleware.js';
 
@@ -45,6 +46,7 @@ export function createApp(): express.Application {
   app.use('/api', healthRouter);
   app.use('/api/setup', setupRouter);
   app.use('/api/auth', authRouter);
+  app.use('/api/agents', agentRouter);
   app.use('/api/server', serverRouter);
   app.use('/api/mods', modsRouter);
   app.use('/api/files', filesRouter);

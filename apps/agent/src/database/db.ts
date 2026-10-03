@@ -85,6 +85,51 @@ function initSchema(db: DatabaseSync): void {
       created_at TEXT NOT NULL
     );
   `);
+
+  // Registered Outbound Agents table (Persistent Architecture)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS registered_agents (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      installation_id TEXT UNIQUE NOT NULL,
+      credential_hash TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'OFFLINE',
+      last_seen TEXT,
+      last_connected TEXT,
+      version TEXT NOT NULL,
+      os TEXT NOT NULL,
+      hostname TEXT NOT NULL,
+      capabilities_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+  `);
+
+  // Pairing Codes table (Single-use, expiring)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS pairing_codes (
+      code TEXT PRIMARY KEY,
+      agent_id TEXT,
+      expires_at TEXT NOT NULL,
+      is_used INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
+    );
+  `);
+
+  // Queued & Audited Agent Commands table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS agent_commands (
+      id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL,
+      type TEXT NOT NULL,
+      payload_json TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'COMMAND_SENT',
+      queueable INTEGER NOT NULL DEFAULT 0,
+      error_message TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+  `);
 }
 
 export function closeDatabase(): void {

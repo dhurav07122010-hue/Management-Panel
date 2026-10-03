@@ -8,6 +8,24 @@ import { closeDatabase } from './database/db.js';
 import { processManager } from './services/process.service.js';
 import { TunnelService } from './services/tunnel.service.js';
 import { PlayitService } from './services/playit.service.js';
+import { AgentConfigManager, type LocalAgentConfig } from './client/config-manager.js';
+import { OutboundAgentClient } from './client/outbound-agent.js';
+import { runCli } from './client/cli.js';
+
+// If called with CLI arguments (e.g. `node index.js start`, `pair`, `doctor`, etc.)
+const cliArgs = process.argv.slice(2);
+const isCliCommand = cliArgs.length > 0 && !cliArgs.includes('--standalone-server');
+
+if (isCliCommand && !cliArgs.includes('--agent-client')) {
+  // Run CLI tool
+  runCli(cliArgs).catch((err) => {
+    console.error('[CLI Error]', err);
+    process.exit(1);
+  });
+} else {
+  // Run Cloud Control Backend & Hub
+  startMainServer();
+}
 
 function getLocalIpAddresses(): string[] {
   const interfaces = os.networkInterfaces();
@@ -22,63 +40,81 @@ function getLocalIpAddresses(): string[] {
   return ips;
 }
 
-const app = createApp();
-const server = http.createServer(app);
-const wsServer = new AgentWebSocketServer(server);
+function startMainServer(): void {
+  const app = createApp();
+  const server = http.createServer(app);
+  const wsServer = new AgentWebSocketServer(server);
 
-// Start backup scheduler
-BackupService.initScheduler();
+  // Start backup scheduler
+  BackupService.initScheduler();
 
-// Start Cloudflare Tunnel automatically for Vercel / remote access
-TunnelService.startTunnel();
+  let outboundClient: OutboundAgentClient | null = null;
 
-server.listen(config.port, config.host, () => {
-  const localIps = getLocalIpAddresses();
-
-  console.log('\n============================================================');
-  console.log('   MINECRAFT SERVER MANAGEMENT CONTROL PANEL & AGENT');
-  console.log('============================================================');
-  console.log(`Agent & API Status: ONLINE`);
-  console.log(`Local Access:       http://localhost:${config.port}`);
-  if (localIps.length > 0) {
-    for (const ip of localIps) {
-      console.log(`LAN (Phone) Access: http://${ip}:${config.port}`);
-    }
+  // Initialize outbound agent client automatically if agent-config.json exists or if local default is desired
+  const agentConfig = AgentConfigManager.loadConfig();
+  if (agentConfig) {
+    console.log('[Server] Discovered configured Outbound Agent. Launching persistent outbound connection...');
+    outboundClient = new OutboundAgentClient(agentConfig);
+    outboundClient.start();
   }
-  console.log(`WebSocket:          ws://localhost:${config.port}/ws`);
-  console.log(`Mock Mode:          ${config.mockMode ? 'ENABLED (Simulated MC)' : 'DISABLED (Real Java)'}`);
-  console.log('============================================================\n');
-});
 
-// Graceful process shutdown handler
-function shutdown(signal: string) {
-  console.log(`\nReceived ${signal}. Shutting down Minecraft Server Panel...`);
-  wsServer.close();
+  // Localtunnel is completely disabled by default for agent communication; 
+  // only started if explicitly requested via ENABLE_LEGACY_TUNNEL=true
+  if (process.env.ENABLE_LEGACY_TUNNEL === 'true') {
+    TunnelService.startTunnel();
+  }
 
-  if (processManager.getState() === 'ONLINE') {
-    console.log('Stopping Minecraft server process...');
-    processManager.stopServer('system-shutdown').catch(() => {
-      processManager.killServer('system-shutdown');
+  server.listen(config.port, config.host, () => {
+    const localIps = getLocalIpAddresses();
+
+    console.log('\n============================================================');
+    console.log('   MINECRAFT SERVER MANAGEMENT CONTROL BACKEND & AGENT');
+    console.log('============================================================');
+    console.log(`Cloud Control Backend: ONLINE (Port ${config.port})`);
+    console.log(`Local Access:          http://localhost:${config.port}`);
+    if (localIps.length > 0) {
+      for (const ip of localIps) {
+        console.log(`LAN (Phone) Access:    http://${ip}:${config.port}`);
+      }
+    }
+    console.log(`WebSocket Endpoint:    ws://localhost:${config.port}/ws`);
+    console.log(`Outbound Agent:        ${agentConfig ? `ENABLED (ID: ${agentConfig.agentId})` : 'READY (Pair via Web or CLI)'}`);
+    console.log(`Mock Mode:             ${config.mockMode ? 'ENABLED (Simulated MC)' : 'DISABLED (Real Java)'}`);
+    console.log('============================================================\n');
+  });
+
+  // Graceful process shutdown handler
+  function shutdown(signal: string) {
+    console.log(`\nReceived ${signal}. Shutting down Minecraft Server Panel...`);
+    if (outboundClient) {
+      outboundClient.stop();
+    }
+    wsServer.close();
+
+    if (processManager.getState() === 'ONLINE') {
+      console.log('Stopping Minecraft server process...');
+      processManager.stopServer('system-shutdown').catch(() => {
+        processManager.killServer('system-shutdown');
+      });
+    }
+    PlayitService.stop();
+    TunnelService.stop();
+
+    closeDatabase();
+    server.close(() => {
+      console.log('Server shut down cleanly.');
+      process.exit(0);
     });
   }
-  PlayitService.stop();
-  TunnelService.stop();
 
-  closeDatabase();
-  server.close(() => {
-    console.log('Server shut down cleanly.');
-    process.exit(0);
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+
+  process.on('uncaughtException', (err) => {
+    console.error('[Agent Exception]', err);
+  });
+
+  process.on('unhandledRejection', (reason) => {
+    console.error('[Agent Rejection]', reason);
   });
 }
-
-process.on('SIGINT', () => shutdown('SIGINT'));
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-
-process.on('uncaughtException', (err) => {
-  console.error('[Agent Exception]', err);
-});
-
-process.on('unhandledRejection', (reason) => {
-  console.error('[Agent Rejection]', reason);
-});
-

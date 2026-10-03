@@ -327,22 +327,22 @@ export const Settings: React.FC = () => {
           </div>
         </div>
 
-        {/* Remote Agent Connection (For Vercel Deployment) */}
+        {/* Remote Backend Connection (For Vercel / Remote Hosting) */}
         <div className="p-6 bg-slate-900 border border-slate-800 rounded-3xl space-y-4 shadow-xl">
           <h3 className="text-sm font-bold text-white flex items-center gap-2">
             <Globe className="w-4 h-4 text-sky-400" />
-            Cloud & Remote Agent Connection (Vercel)
+            Cloud Control Backend URL (Vercel / Remote Web UI)
           </h3>
           <p className="text-xs text-slate-400">
-            If hosting the web panel on Vercel or accessing from outside your local network, specify your public Server Agent URL (e.g. Cloudflare Tunnel, Tailscale, or public domain with HTTPS).
+            If hosting the web panel on Vercel or accessing remotely, specify your Cloud Control Backend URL (HTTPS). The local agent on Windows will maintain an outbound connection to this backend without requiring local open ports.
           </p>
           <div className="space-y-1">
-            <label className="text-xs text-slate-400">Custom Agent Endpoint URL</label>
+            <label className="text-xs text-slate-400">Control Backend Endpoint URL</label>
             <input
               type="text"
               defaultValue={getAgentBaseUrl()}
               onChange={(e) => setAgentBaseUrl(e.target.value)}
-              placeholder="e.g. https://mc-agent.yourdomain.com or http://192.168.1.38:3001"
+              placeholder="e.g. https://api.yourdomain.com or http://192.168.1.38:3001"
               className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white font-mono text-xs placeholder-slate-600 focus:outline-none focus:border-emerald-500"
             />
             <span className="text-[10px] text-slate-500">

@@ -235,10 +235,178 @@ export type WebSocketEventType =
   | 'backup.progress'
   | 'mod.progress'
   | 'agent.connected'
-  | 'agent.pong';
+  | 'agent.pong'
+  | 'agent.state_sync'
+  | 'agent.command_ack';
 
 export interface WebSocketMessage<T = unknown> {
   type: WebSocketEventType;
   payload: T;
   timestamp: string;
 }
+
+// ============================================================
+// AGENT PERSISTENT CONNECTION ARCHITECTURE PROTOCOL (V1)
+// ============================================================
+
+export type AgentConnectionState =
+  | 'DISCONNECTED'
+  | 'CONNECTING'
+  | 'AUTHENTICATING'
+  | 'CONNECTED'
+  | 'DEGRADED'
+  | 'RECONNECTING'
+  | 'STOPPING'
+  | 'ERROR';
+
+export interface AgentConnectionSnapshot {
+  currentState: AgentConnectionState;
+  lastConnectedAt: string | null;
+  lastHeartbeatAt: string | null;
+  lastMessageAt: string | null;
+  reconnectAttempts: number;
+  disconnectReason: string | null;
+  latencyMs: number | null;
+  agentVersion: string;
+}
+
+export type AgentOfflineStatus = 'ONLINE' | 'DEGRADED' | 'OFFLINE' | 'UNKNOWN';
+
+export interface AgentCapabilities {
+  minecraft: boolean;
+  files: boolean;
+  mods: boolean;
+  console: boolean;
+  systemStats: boolean;
+  serverControl: boolean;
+}
+
+export interface AgentSystemInfo {
+  os: string;
+  platform: string;
+  arch: string;
+  hostname: string;
+  nodeVersion: string;
+  uptimeSeconds: number;
+}
+
+export interface AgentRegistrationRecord {
+  id: string; // agent_xxxx
+  name: string;
+  installationId: string;
+  tokenHash: string;
+  version: string;
+  os: string;
+  hostname: string;
+  capabilities: AgentCapabilities;
+  status: AgentOfflineStatus;
+  lastSeen: string;
+  lastConnected: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PairingCodeRecord {
+  code: string; // e.g. XXXX-XXXX
+  agentId?: string;
+  expiresAt: string;
+  isUsed: boolean;
+  createdAt: string;
+}
+
+export type CommandStatus =
+  | 'COMMAND_SENT'
+  | 'COMMAND_RECEIVED'
+  | 'COMMAND_STARTED'
+  | 'COMMAND_COMPLETED'
+  | 'COMMAND_FAILED'
+  | 'TIMEOUT_WAITING_FOR_AGENT';
+
+export interface AgentCommand<T = unknown> {
+  id: string; // command_xxx
+  type: string; // e.g. 'minecraft.start', 'minecraft.stop', 'minecraft.command', 'file.list'
+  agentId: string;
+  timestamp: string;
+  timeoutMs?: number;
+  queueable?: boolean;
+  payload: T;
+}
+
+export interface AgentCommandAck {
+  id: string;
+  status: CommandStatus;
+  timestamp: string;
+  error?: string;
+}
+
+export interface AgentCommandResponse<T = unknown> {
+  id: string;
+  success: boolean;
+  timestamp: string;
+  status?: string;
+  result?: T;
+  error?: {
+    code: string;
+    message: string;
+  };
+}
+
+export interface AgentHeartbeatPayload {
+  agentId: string;
+  installationId: string;
+  timestamp: string;
+  status: 'healthy' | 'degraded';
+  metrics?: {
+    cpuPercent: number;
+    memoryUsedMb: number;
+    memoryTotalMb: number;
+    diskUsedPercent?: number;
+  };
+  minecraftState?: ServerState;
+}
+
+export interface AgentHeartbeatAck {
+  type: 'heartbeat_ack';
+  timestamp: string;
+  serverTime: string;
+}
+
+export interface AgentAuthMessage {
+  protocolVersion: 1;
+  agentId: string;
+  installationId: string;
+  token: string;
+  name: string;
+  version: string;
+  systemInfo: AgentSystemInfo;
+  capabilities: AgentCapabilities;
+}
+
+export interface AgentStateSyncPayload {
+  agentId: string;
+  protocolVersion: 1;
+  minecraft: {
+    status: ServerState;
+    pid: number | null;
+    uptime: number;
+  };
+  system: {
+    cpu: number;
+    ram: number;
+  };
+  capabilities: AgentCapabilities;
+}
+
+export interface AgentDiagnosticsInfo {
+  backend: 'CONNECTED' | 'DISCONNECTED';
+  websocket: 'CONNECTED' | 'DISCONNECTED' | 'CONNECTING' | 'RECONNECTING';
+  authentication: 'VALID' | 'INVALID' | 'UNPAIRED';
+  lastHeartbeatSecondsAgo: number | null;
+  latencyMs: number | null;
+  reconnectAttempts: number;
+  agentVersion: string;
+  minecraftState: ServerState;
+  watchdogActive: boolean;
+  status: AgentOfflineStatus;
+}
+

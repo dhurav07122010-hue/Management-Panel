@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { processManager } from '../services/process.service.js';
+import { AgentHub } from '../services/agent-hub.service.js';
+import { AgentRepository } from '../database/repositories.js';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.middleware.js';
 
 export const serverRouter = Router();
@@ -19,6 +21,21 @@ const playerActionSchema = z.object({
 
 serverRouter.get('/status', async (_req, res, next) => {
   try {
+    const hub = AgentHub.getInstance();
+    const agents = AgentRepository.list();
+    const activeAgent = agents.find((a) => hub.isAgentOnline(a.id));
+
+    if (activeAgent) {
+      const session = hub.getConnectedAgent(activeAgent.id);
+      const summary = await processManager.getHealthSummary();
+      summary.state = session?.minecraftState || summary.state;
+      res.json({
+        success: true,
+        data: summary
+      });
+      return;
+    }
+
     const summary = await processManager.getHealthSummary();
     res.json({
       success: true,
@@ -32,6 +49,20 @@ serverRouter.get('/status', async (_req, res, next) => {
 serverRouter.post('/start', async (req: AuthenticatedRequest, res, next) => {
   try {
     const username = req.user?.username || 'admin';
+    const hub = AgentHub.getInstance();
+    const agents = AgentRepository.list();
+    const activeAgent = agents.find((a) => hub.isAgentOnline(a.id));
+
+    if (activeAgent) {
+      const resp = await hub.dispatchCommand(activeAgent.id, 'minecraft.start', { username });
+      res.json({
+        success: resp.success,
+        data: resp.result || { message: 'Server starting...' },
+        error: resp.error
+      });
+      return;
+    }
+
     await processManager.startServer(username);
     res.json({
       success: true,
@@ -51,6 +82,20 @@ serverRouter.post('/start', async (req: AuthenticatedRequest, res, next) => {
 serverRouter.post('/stop', async (req: AuthenticatedRequest, res, next) => {
   try {
     const username = req.user?.username || 'admin';
+    const hub = AgentHub.getInstance();
+    const agents = AgentRepository.list();
+    const activeAgent = agents.find((a) => hub.isAgentOnline(a.id));
+
+    if (activeAgent) {
+      const resp = await hub.dispatchCommand(activeAgent.id, 'minecraft.stop', { username });
+      res.json({
+        success: resp.success,
+        data: resp.result || { message: 'Server stopping...' },
+        error: resp.error
+      });
+      return;
+    }
+
     await processManager.stopServer(username);
     res.json({
       success: true,
@@ -70,6 +115,20 @@ serverRouter.post('/stop', async (req: AuthenticatedRequest, res, next) => {
 serverRouter.post('/restart', async (req: AuthenticatedRequest, res, next) => {
   try {
     const username = req.user?.username || 'admin';
+    const hub = AgentHub.getInstance();
+    const agents = AgentRepository.list();
+    const activeAgent = agents.find((a) => hub.isAgentOnline(a.id));
+
+    if (activeAgent) {
+      const resp = await hub.dispatchCommand(activeAgent.id, 'minecraft.restart', { username });
+      res.json({
+        success: resp.success,
+        data: resp.result || { message: 'Server restarting...' },
+        error: resp.error
+      });
+      return;
+    }
+
     await processManager.restartServer(username);
     res.json({
       success: true,
@@ -86,8 +145,21 @@ serverRouter.post('/restart', async (req: AuthenticatedRequest, res, next) => {
   }
 });
 
-serverRouter.post('/kill', (req: AuthenticatedRequest, res) => {
+serverRouter.post('/kill', async (req: AuthenticatedRequest, res) => {
   const username = req.user?.username || 'admin';
+  const hub = AgentHub.getInstance();
+  const agents = AgentRepository.list();
+  const activeAgent = agents.find((a) => hub.isAgentOnline(a.id));
+
+  if (activeAgent) {
+    await hub.dispatchCommand(activeAgent.id, 'minecraft.kill', { username });
+    res.json({
+      success: true,
+      data: { message: 'Server forcefully terminated.' }
+    });
+    return;
+  }
+
   processManager.killServer(username);
   res.json({
     success: true,
@@ -104,10 +176,24 @@ serverRouter.get('/players', (_req, res) => {
   });
 });
 
-serverRouter.post('/command', (req: AuthenticatedRequest, res, next) => {
+serverRouter.post('/command', async (req: AuthenticatedRequest, res, next) => {
   try {
     const { command } = commandSchema.parse(req.body);
     const username = req.user?.username || 'admin';
+    const hub = AgentHub.getInstance();
+    const agents = AgentRepository.list();
+    const activeAgent = agents.find((a) => hub.isAgentOnline(a.id));
+
+    if (activeAgent) {
+      const resp = await hub.dispatchCommand(activeAgent.id, 'minecraft.command', { command });
+      res.json({
+        success: resp.success,
+        data: resp.result || { message: 'Command dispatched to server.' },
+        error: resp.error
+      });
+      return;
+    }
+
     const sent = processManager.sendCommand(command, username);
     if (!sent) {
       res.status(400).json({

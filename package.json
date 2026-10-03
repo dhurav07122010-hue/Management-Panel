@@ -15,6 +15,9 @@
     "build:agent": "npm run build --workspace=@mc-panel/agent",
     "build:web": "npm run build --workspace=@mc-panel/types && npm run build --workspace=@mc-panel/web",
     "start": "npm run start --workspace=@mc-panel/agent",
+    "agent": "node apps/agent/dist/index.js",
+    "watchdog": "node apps/agent/dist/client/watchdog.js",
+    "doctor": "node apps/agent/dist/index.js doctor",
     "test": "npm run test --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present"
   },
