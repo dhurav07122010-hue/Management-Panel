@@ -8,10 +8,7 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-:loop
-REM Launch agent in background logging output to data/agent-service.log
-node apps\agent\dist\index.js >> "data\agent-service.log" 2>&1
-ping 127.0.0.1 -n 6 >nul 2>&1
-goto loop
+REM Launch agent watchdog in background logging output to data/agent-service.log
+node apps\agent\dist\client\watchdog.js >> "data\agent-service.log" 2>&1
 
 

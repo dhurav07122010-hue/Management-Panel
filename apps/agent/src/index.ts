@@ -18,7 +18,11 @@ const isCliCommand = cliArgs.length > 0 && !cliArgs.includes('--standalone-serve
 
 if (isCliCommand && !cliArgs.includes('--agent-client')) {
   // Run CLI tool
-  runCli(cliArgs).catch((err) => {
+  runCli(cliArgs).then(() => {
+    if (!['start', 'logs'].includes(cliArgs[0]?.toLowerCase())) {
+      process.exit(0);
+    }
+  }).catch((err) => {
     console.error('[CLI Error]', err);
     process.exit(1);
   });
@@ -58,9 +62,8 @@ function startMainServer(): void {
     outboundClient.start();
   }
 
-  // Localtunnel is completely disabled by default for agent communication; 
-  // only started if explicitly requested via ENABLE_LEGACY_TUNNEL=true
-  if (process.env.ENABLE_LEGACY_TUNNEL === 'true') {
+  // Localtunnel enables public remote / Vercel web access without open ports
+  if (process.env.ENABLE_TUNNEL !== 'false') {
     TunnelService.startTunnel();
   }
 

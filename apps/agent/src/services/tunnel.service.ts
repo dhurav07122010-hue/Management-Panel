@@ -78,9 +78,7 @@ export class TunnelService {
         fs.writeFileSync(distPublicFile, JSON.stringify({ url, updatedAt: new Date().toISOString() }, null, 2), 'utf-8');
       }
 
-      console.log(`[TunnelService] Syncing fixed tunnel URL to GitHub repository...`);
-
-      const gitCommand = 'git add apps/web/public/tunnel.json tunnel-url.txt && git commit -m "chore: update live agent tunnel URL [skip ci]" && git pull --rebase origin main && git push origin main';
+      const gitCommand = 'git add apps/web/public/tunnel.json tunnel-url.txt && (git diff --cached --quiet || (git commit -m "chore: update live agent tunnel URL [skip ci]" && git push origin main))';
       exec(gitCommand, { cwd: rootDir }, (error, _stdout, stderr) => {
         if (error) {
           console.warn('[TunnelService] Git sync warning:', error.message);

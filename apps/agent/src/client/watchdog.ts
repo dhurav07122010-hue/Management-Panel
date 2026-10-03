@@ -3,7 +3,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 
 const rootDir = path.resolve(process.cwd(), process.cwd().includes('apps') ? '../..' : '.');
-const logFile = path.join(rootDir, 'data', 'watchdog.log');
+const logFile = path.join(rootDir, 'data', 'agent-service.log');
 const pidFile = path.join(rootDir, 'data', 'agent.pid');
 
 function log(msg: string): void {
@@ -57,10 +57,16 @@ export class WindowsAgentWatchdog {
 
     child.stdout?.on('data', (d) => {
       process.stdout.write(d);
+      try {
+        fs.appendFileSync(logFile, d);
+      } catch {}
     });
 
     child.stderr?.on('data', (d) => {
       process.stderr.write(d);
+      try {
+        fs.appendFileSync(logFile, d);
+      } catch {}
     });
 
     child.on('exit', (code, signal) => {
