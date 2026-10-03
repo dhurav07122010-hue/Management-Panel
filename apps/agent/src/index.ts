@@ -29,15 +29,6 @@ const wsServer = new AgentWebSocketServer(server);
 // Start backup scheduler
 BackupService.initScheduler();
 
-// Start Cloudflare Tunnel automatically for Vercel
-TunnelService.startTunnel();
-
-// Ensure Playit.gg tunnel is running for player connections
-PlayitService.ensureRunning();
-
-// Check if server auto-start is configured
-processManager.checkAutoStart();
-
 server.listen(config.port, config.host, () => {
   const localIps = getLocalIpAddresses();
 
@@ -67,6 +58,8 @@ function shutdown(signal: string) {
       processManager.killServer('system-shutdown');
     });
   }
+  PlayitService.stop();
+  TunnelService.stop();
 
   closeDatabase();
   server.close(() => {

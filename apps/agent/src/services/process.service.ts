@@ -7,6 +7,8 @@ import { config } from '../config/environment.js';
 import { SettingsRepository, AuditLogRepository } from '../database/repositories.js';
 import { ServerConfigService } from './server-config.service.js';
 import { StatsService } from './stats.service.js';
+import { PlayitService } from './playit.service.js';
+import { TunnelService } from './tunnel.service.js';
 import type { ServerState, ConsoleLine, PlayerInfo, ServerHealthSummary, LogLevel } from '@mc-panel/types';
 
 export class ProcessService {
@@ -234,6 +236,10 @@ export class ProcessService {
       this.pid = this.process.pid ?? null;
       AuditLogRepository.create(username, 'SERVER_START', `Server started with PID: ${this.pid}`);
 
+      // Start tunnels for player and remote connectivity only when the server is being started
+      PlayitService.start();
+      TunnelService.startTunnel();
+
       this.process.stdout?.on('data', (data: Buffer) => {
         const text = data.toString('utf-8');
         const lines = text.split(/\r?\n/);
@@ -273,6 +279,10 @@ export class ProcessService {
     this.process = null;
     this.startTime = null;
     this.onlinePlayers.clear();
+
+    // Stop external tunnels since Minecraft server is no longer active
+    PlayitService.stop();
+    TunnelService.stop();
 
     if (this.onPlayerCallback) {
       this.onPlayerCallback([]);
@@ -395,6 +405,9 @@ export class ProcessService {
     this.process = null;
     this.setState('OFFLINE');
     this.startTime = null;
+
+    PlayitService.stop();
+    TunnelService.stop();
   }
 
   /**
@@ -582,6 +595,9 @@ export class ProcessService {
     this.appendConsole('[Panel] [Mock] Launching simulated Fabric 1.21.1 server...', 'INFO');
     AuditLogRepository.create(username, 'SERVER_START', 'Simulated server started in Mock Mode');
 
+    PlayitService.start();
+    TunnelService.startTunnel();
+
     setTimeout(() => {
       this.appendConsole('[00:00:01] [main/INFO]: Loading Minecraft 1.21.1 with Fabric Loader 0.16.5', 'INFO');
       this.appendConsole('[00:00:02] [main/INFO]: Loading 18 mods: fabric-api, lithium, sodium, geyser-fabric, floodgate', 'INFO');
@@ -628,6 +644,8 @@ export class ProcessService {
       this.startTime = null;
       this.onlinePlayers.clear();
       this.setState('OFFLINE');
+      PlayitService.stop();
+      TunnelService.stop();
       this.appendConsole('[Panel] Server stopped cleanly.', 'INFO');
       if (this.onPlayerCallback) {
         this.onPlayerCallback([]);

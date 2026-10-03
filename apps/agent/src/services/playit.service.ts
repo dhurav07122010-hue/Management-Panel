@@ -1,17 +1,11 @@
-import { spawn, execSync, type ChildProcess } from 'node:child_process';
+import { execSync } from 'node:child_process';
 import fs from 'node:fs';
-import path from 'node:path';
 
 export class PlayitService {
-  private static serviceChecked = false;
-
   /**
-   * Discovers and guarantees that playit is running.
+   * Starts the playit tunnel service when Minecraft server is started.
    */
-  public static ensureRunning(): void {
-    if (this.serviceChecked) return;
-    this.serviceChecked = true;
-
+  public static start(): void {
     try {
       const playitPath = this.getPlayitExecutable();
       if (!playitPath) {
@@ -19,29 +13,60 @@ export class PlayitService {
         return;
       }
 
-      console.log('[PlayitService] Ensuring playit tunnel service is active...');
-
-      // Check status using playit CLI
-      try {
-        const statusOutput = execSync(`"${playitPath}" status`, { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] });
-        if (statusOutput.includes('Phase: running')) {
-          console.log('[PlayitService] Playit tunnel service is already active and running.');
-          return;
-        }
-      } catch {
-        // playit status might fail if service not started
+      if (this.isRunning()) {
+        console.log('[PlayitService] Playit tunnel service is already active and running.');
+        return;
       }
 
-      // Try starting via playit CLI
-      const startProc = spawn(playitPath, ['start'], {
-        detached: true,
-        stdio: 'ignore',
-        windowsHide: true
+      console.log('[PlayitService] Starting playit tunnel for Minecraft server...');
+      execSync(`"${playitPath}" start`, {
+        encoding: 'utf-8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+        timeout: 10000
       });
-      startProc.unref();
-      console.log('[PlayitService] Dispatched start command to playit service.');
+      console.log('[PlayitService] Playit tunnel service started.');
     } catch (err) {
-      console.error('[PlayitService] Error checking/starting playit:', err instanceof Error ? err.message : err);
+      console.error('[PlayitService] Error starting playit:', err instanceof Error ? err.message : err);
+    }
+  }
+
+  /**
+   * Stops the playit tunnel service when Minecraft server is stopped.
+   */
+  public static stop(): void {
+    try {
+      const playitPath = this.getPlayitExecutable();
+      if (!playitPath) return;
+
+      if (!this.isRunning()) {
+        return;
+      }
+
+      console.log('[PlayitService] Stopping playit tunnel service...');
+      execSync(`"${playitPath}" stop`, {
+        encoding: 'utf-8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+        timeout: 10000
+      });
+      console.log('[PlayitService] Playit tunnel service stopped.');
+    } catch (err) {
+      console.error('[PlayitService] Error stopping playit:', err instanceof Error ? err.message : err);
+    }
+  }
+
+  public static isRunning(): boolean {
+    const playitPath = this.getPlayitExecutable();
+    if (!playitPath) return false;
+
+    try {
+      const statusOutput = execSync(`"${playitPath}" status`, {
+        encoding: 'utf-8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+        timeout: 5000
+      });
+      return statusOutput.includes('Phase: running');
+    } catch {
+      return false;
     }
   }
 
@@ -65,3 +90,4 @@ export class PlayitService {
     return null;
   }
 }
+

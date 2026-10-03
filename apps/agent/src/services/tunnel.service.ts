@@ -5,12 +5,16 @@ import fs from 'node:fs';
 export class TunnelService {
   private static tunnelProcess: ChildProcess | null = null;
   private static currentUrl: string | null = null;
+  private static shouldRun = false;
 
   public static getTunnelUrl(): string | null {
     return this.currentUrl;
   }
 
   public static startTunnel(): void {
+    if (this.tunnelProcess) return;
+    this.shouldRun = true;
+
     const rootDir = path.resolve(process.cwd(), process.cwd().includes('apps') ? '../..' : '.');
     const cloudflaredExe = path.join(rootDir, 'cloudflared.exe');
 
@@ -19,7 +23,7 @@ export class TunnelService {
       return;
     }
 
-    console.log('[TunnelService] Launching automatic Cloudflare Tunnel for Vercel connection...');
+    console.log('[TunnelService] Launching Cloudflare Tunnel for management system...');
 
     try {
       this.tunnelProcess = spawn(cloudflaredExe, ['tunnel', '--url', 'http://localhost:3001'], {
@@ -33,7 +37,7 @@ export class TunnelService {
         if (match && match[0] !== this.currentUrl) {
           this.currentUrl = match[0];
           console.log('\n============================================================');
-          console.log('   AUTOMATIC CLOUDFLARE TUNNEL ONLINE FOR VERCEL!');
+          console.log('   CLOUDFLARE TUNNEL ONLINE FOR VERCEL / REMOTE ACCESS!');
           console.log('   Public Agent URL: ' + this.currentUrl);
           console.log('============================================================\n');
 
@@ -50,9 +54,12 @@ export class TunnelService {
       this.tunnelProcess.stderr?.on('data', handleData);
 
       this.tunnelProcess.on('exit', (code) => {
-        console.log(`[TunnelService] Tunnel exited with code ${code}. Reconnecting in 10s...`);
         this.currentUrl = null;
-        setTimeout(() => this.startTunnel(), 10000);
+        if (!this.shouldRun) return;
+        console.log(`[TunnelService] Tunnel exited with code ${code}. Reconnecting in 10s...`);
+        setTimeout(() => {
+          if (this.shouldRun) this.startTunnel();
+        }, 10000);
       });
 
       this.tunnelProcess.on('error', (err) => {
@@ -87,9 +94,20 @@ export class TunnelService {
   }
 
   public static stop(): void {
+    this.shouldRun = false;
     if (this.tunnelProcess) {
-      this.tunnelProcess.kill();
+      try {
+        if (process.platform === 'win32' && this.tunnelProcess.pid) {
+          spawn('taskkill', ['/pid', this.tunnelProcess.pid.toString(), '/T', '/F']);
+        } else {
+          this.tunnelProcess.kill('SIGKILL');
+        }
+      } catch {
+        // ignore
+      }
       this.tunnelProcess = null;
     }
+    this.currentUrl = null;
+    console.log('[TunnelService] Cloudflare tunnel stopped.');
   }
 }
