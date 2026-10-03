@@ -5,6 +5,7 @@ temp-uploads/
 
 # Build artifacts
 *.tsbuildinfo
+*.exe
 
 # SQLite databases & runtime storage
 data/*.sqlite
