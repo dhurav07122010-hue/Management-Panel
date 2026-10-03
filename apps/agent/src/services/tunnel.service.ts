@@ -85,7 +85,7 @@ export class TunnelService {
       const gitCmd = spawn('git', ['add', 'apps/web/public/tunnel.json'], { cwd: rootDir });
       gitCmd.on('close', (c1) => {
         if (c1 === 0) {
-          const commitCmd = spawn('git', ['commit', '-m', 'chore: update live agent tunnel URL [skip ci]'], { cwd: rootDir });
+          const commitCmd = spawn('git', ['commit', '-m', 'chore: update live agent tunnel URL'], { cwd: rootDir });
           commitCmd.on('close', (c2) => {
             if (c2 === 0) {
               spawn('git', ['push', 'origin', 'main'], { cwd: rootDir });

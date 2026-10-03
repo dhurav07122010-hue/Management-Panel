@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth.js';
 import { getAgentBaseUrl, setAgentBaseUrl } from '../services/api.js';
@@ -14,6 +14,18 @@ export const Login: React.FC = () => {
   const [showAdvanced, setShowAdvanced] = useState(isVercelHost && !initialAgentUrl);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const checkLiveUrl = () => {
+      const live = getAgentBaseUrl();
+      if (live && !agentUrl) {
+        setAgentAgentUrl(live);
+      }
+    };
+    checkLiveUrl();
+    const timer = setInterval(checkLiveUrl, 1000);
+    return () => clearInterval(timer);
+  }, [agentUrl]);
 
   const { login } = useAuth();
   const navigate = useNavigate();

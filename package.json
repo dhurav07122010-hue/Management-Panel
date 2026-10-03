@@ -13,7 +13,7 @@
     "dev:web": "npm run dev --workspace=@mc-panel/web",
     "build": "npm run build --workspaces --if-present",
     "build:agent": "npm run build --workspace=@mc-panel/agent",
-    "build:web": "npm run build --workspace=@mc-panel/web",
+    "build:web": "npm run build --workspace=@mc-panel/types && npm run build --workspace=@mc-panel/web",
     "start": "npm run start --workspace=@mc-panel/agent",
     "test": "npm run test --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present"

@@ -52,23 +52,33 @@ if (isLocalHost) {
 
 // Background auto-fetch of tunnel config (especially for remote / Vercel deployment)
 if (isBrowser) {
-  fetch('/tunnel.json')
-    .then((r) => r.json())
-    .then((data: unknown) => {
-      const payload = data as { url?: string };
-      if (payload && typeof payload.url === 'string' && payload.url.startsWith('http')) {
-        const validUrl = payload.url.replace(/\/$/, '');
-        cachedAutoTunnelUrl = validUrl;
-        // On Vercel, keep localStorage in sync with newest tunnel URL
-        if (isVercelHost) {
-          const currentSaved = localStorage.getItem(AGENT_URL_KEY);
-          if (!currentSaved || currentSaved.includes('.trycloudflare.com')) {
-            localStorage.setItem(AGENT_URL_KEY, validUrl);
-          }
+  const syncFromData = (data: unknown) => {
+    const payload = data as { url?: string };
+    if (payload && typeof payload.url === 'string' && payload.url.startsWith('http')) {
+      const validUrl = payload.url.replace(/\/$/, '');
+      cachedAutoTunnelUrl = validUrl;
+      // On Vercel, keep localStorage in sync with newest tunnel URL
+      if (isVercelHost) {
+        const currentSaved = localStorage.getItem(AGENT_URL_KEY);
+        if (!currentSaved || currentSaved.includes('.trycloudflare.com')) {
+          localStorage.setItem(AGENT_URL_KEY, validUrl);
         }
       }
-    })
+    }
+  };
+
+  fetch('/tunnel.json')
+    .then((r) => r.json())
+    .then(syncFromData)
     .catch(() => {});
+
+  // If on Vercel, also query raw GitHub with cache-busting for instant live discovery
+  if (isVercelHost) {
+    fetch(`https://raw.githubusercontent.com/dhurav07122010-hue/Management-Panel/main/apps/web/public/tunnel.json?t=${Date.now()}`)
+      .then((r) => r.json())
+      .then(syncFromData)
+      .catch(() => {});
+  }
 }
 
 export function getAgentBaseUrl(): string {
