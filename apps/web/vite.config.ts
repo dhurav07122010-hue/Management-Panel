@@ -6,7 +6,8 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src')
+      '@': path.resolve(__dirname, './src'),
+      '@mc-panel/types': path.resolve(__dirname, './src/types/index.ts')
     }
   },
   server: {

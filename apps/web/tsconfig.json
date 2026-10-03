@@ -18,7 +18,8 @@
     "noFallthroughCasesInSwitch": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["src/*"],
+      "@mc-panel/types": ["src/types/index.ts", "../../packages/types/src/index.ts"]
     }
   },
   "include": ["src"]
