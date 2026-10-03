@@ -21,12 +21,19 @@ export const Login: React.FC = () => {
     setConnectionStatus('checking');
     try {
       const target = (urlToCheck !== undefined ? urlToCheck : agentUrl).trim().replace(/\/$/, '');
-      const testUrl = target ? `${target}/api/setup/status` : '/api/setup/status';
+      const testUrl = target ? `${target}/api/health` : '/api/health';
       const controller = new AbortController();
       const id = setTimeout(() => controller.abort(), 4000);
       const res = await fetch(testUrl, { signal: controller.signal });
       clearTimeout(id);
       if (res.ok) {
+        setConnectionStatus('connected');
+        return true;
+      }
+      // Fallback check to /api/setup/status
+      const fallbackUrl = target ? `${target}/api/setup/status` : '/api/setup/status';
+      const resFallback = await fetch(fallbackUrl);
+      if (resFallback.ok) {
         setConnectionStatus('connected');
         return true;
       }

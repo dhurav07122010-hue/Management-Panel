@@ -64,9 +64,6 @@ export async function refreshTunnelUrl(): Promise<string | null> {
         if (data && typeof data.url === 'string' && data.url.startsWith('http')) {
           const liveUrl = data.url.trim().replace(/\/$/, '');
           cachedAutoTunnelUrl = liveUrl;
-          if (!isLocalHost) {
-            localStorage.setItem(AGENT_URL_KEY, liveUrl);
-          }
           return liveUrl;
         }
       }
@@ -87,24 +84,33 @@ if (isBrowser && (!isLocalHost || isVercelHost)) {
 }
 
 export function getAgentBaseUrl(): string {
-  // 1. For local/LAN hosts, default to direct same-host connection unless explicitly overridden with custom domain
+  // 1. User manual override in localStorage (e.g. from Settings or Login "Server Agent Connection Settings")
   const savedUrl = isBrowser ? localStorage.getItem(AGENT_URL_KEY) : null;
-  if (isLocalHost) {
-    if (savedUrl && !savedUrl.includes('.trycloudflare.com')) {
-      return savedUrl.replace(/\/$/, '');
+  if (savedUrl && savedUrl.trim()) {
+    const cleanSaved = savedUrl.trim().replace(/\/$/, '');
+    // If local user had an old stale trycloudflare URL, clean it up
+    if (isLocalHost && cleanSaved.includes('.trycloudflare.com')) {
+      localStorage.removeItem(AGENT_URL_KEY);
+    } else {
+      return cleanSaved;
     }
+  }
+
+  // 2. Direct same-host connection for local/LAN hosts
+  if (isLocalHost) {
     return '';
   }
 
-  // 2. Dynamic live tunnel from memory cache (fetched from GitHub)
-  if (cachedAutoTunnelUrl) return cachedAutoTunnelUrl;
-
-  // 3. User override in localStorage (e.g. from Settings or Login)
-  if (savedUrl) return savedUrl.replace(/\/$/, '');
+  // 3. Dynamic live tunnel from memory cache (fetched from GitHub tunnel.json)
+  if (cachedAutoTunnelUrl) {
+    return cachedAutoTunnelUrl.trim().replace(/\/$/, '');
+  }
 
   // 4. Vite environment variable configured at build/deployment time
   const envUrl = (import.meta as unknown as { env: Record<string, string> }).env?.VITE_AGENT_URL;
-  if (envUrl) return envUrl.replace(/\/$/, '');
+  if (envUrl && envUrl.trim()) {
+    return envUrl.trim().replace(/\/$/, '');
+  }
 
   // 5. Fallback to same host
   return '';

@@ -37,6 +37,11 @@ export function createApp(): express.Application {
   app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 
   // Mount API endpoints
+  app.use('/health', healthRouter);
+  app.use('/status', healthRouter);
+  app.use('/ping', healthRouter);
+  app.use('/agent', healthRouter);
+  app.use('/api/agent', healthRouter);
   app.use('/api', healthRouter);
   app.use('/api/setup', setupRouter);
   app.use('/api/auth', authRouter);
@@ -46,6 +51,17 @@ export function createApp(): express.Application {
   app.use('/api/backups', backupsRouter);
   app.use('/api', geyserRouter);
   app.use('/api/settings', settingsRouter);
+
+  // 404 handler for API routes (always return JSON, never HTML)
+  app.all('/api/*', (_req, res) => {
+    res.status(404).json({
+      success: false,
+      error: {
+        code: 'NOT_FOUND',
+        message: 'Endpoint not found on Server Agent'
+      }
+    });
+  });
 
   // Serve production build of web frontend if it exists
   const candidateWebPaths = [

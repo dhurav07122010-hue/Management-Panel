@@ -37,7 +37,7 @@ export class TunnelService {
     try {
       this.tunnelProcess = spawn(
         cloudflaredExe,
-        ['tunnel', '--edge-ip-version', '4', '--url', `http://localhost:${config.port}`],
+        ['tunnel', '--no-autoupdate', '--metrics', 'localhost:0', '--edge-ip-version', '4', '--url', `http://localhost:${config.port}`],
         {
           stdio: ['ignore', 'pipe', 'pipe'],
           windowsHide: true
@@ -58,8 +58,10 @@ export class TunnelService {
           const urlFile = path.join(rootDir, 'tunnel-url.txt');
           fs.writeFileSync(urlFile, this.currentUrl, 'utf-8');
 
-          // Automatically commit and push tunnel-url.json to GitHub so Vercel can auto-connect
+          // Automatically commit and push tunnel.json to GitHub so Vercel can auto-connect
           this.syncUrlToGitHub(rootDir, this.currentUrl);
+        } else if (text.includes('ERR') || text.includes('failed') || text.includes('error')) {
+          console.warn(`[TunnelService] ${text.trim()}`);
         }
       };
 
@@ -68,17 +70,20 @@ export class TunnelService {
 
       this.tunnelProcess.on('exit', (code) => {
         this.currentUrl = null;
+        this.tunnelProcess = null;
         if (!this.shouldRun) return;
-        console.log(`[TunnelService] Tunnel exited with code ${code}. Reconnecting in 10s...`);
+        console.log(`[TunnelService] Tunnel exited with code ${code}. Reconnecting in 5s...`);
         setTimeout(() => {
           if (this.shouldRun) this.startTunnel();
-        }, 10000);
+        }, 5000);
       });
 
       this.tunnelProcess.on('error', (err) => {
         console.error('[TunnelService] Tunnel error:', err.message);
+        this.tunnelProcess = null;
       });
     } catch (e) {
+      this.tunnelProcess = null;
       console.error('[TunnelService] Failed to spawn tunnel:', e);
     }
   }
@@ -94,23 +99,30 @@ export class TunnelService {
         fs.writeFileSync(distPublicFile, JSON.stringify({ url, updatedAt: new Date().toISOString() }, null, 2), 'utf-8');
       }
 
+      console.log(`[TunnelService] Syncing live tunnel URL to GitHub repository...`);
+
       // Use git to push tunnel.json automatically
-      const gitCmd = spawn('git', ['add', 'apps/web/public/tunnel.json', 'tunnel-url.txt'], { cwd: rootDir });
+      const gitCmd = spawn('git', ['add', 'apps/web/public/tunnel.json', 'tunnel-url.txt'], { cwd: rootDir, shell: true });
       gitCmd.on('close', (c1) => {
         if (c1 === 0) {
-          const commitCmd = spawn('git', ['commit', '-m', 'chore: update live agent tunnel URL [skip ci]'], { cwd: rootDir });
+          const commitCmd = spawn('git', ['commit', '-m', 'chore: update live agent tunnel URL [skip ci]'], { cwd: rootDir, shell: true });
           commitCmd.on('close', (c2) => {
             if (c2 === 0) {
-              const pullCmd = spawn('git', ['pull', '--rebase', 'origin', 'main'], { cwd: rootDir });
+              const pullCmd = spawn('git', ['pull', '--rebase', 'origin', 'main'], { cwd: rootDir, shell: true });
               pullCmd.on('close', () => {
-                spawn('git', ['push', 'origin', 'main'], { cwd: rootDir });
+                const pushCmd = spawn('git', ['push', 'origin', 'main'], { cwd: rootDir, shell: true });
+                pushCmd.on('close', (c3) => {
+                  if (c3 === 0) {
+                    console.log(`[TunnelService] Successfully pushed live agent tunnel URL to GitHub.`);
+                  }
+                });
               });
             }
           });
         }
       });
-    } catch {
-      // ignore git sync errors
+    } catch (err) {
+      console.warn('[TunnelService] Error syncing tunnel URL to GitHub:', err);
     }
   }
 
