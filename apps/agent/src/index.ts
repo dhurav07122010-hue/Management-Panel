@@ -29,6 +29,9 @@ const wsServer = new AgentWebSocketServer(server);
 // Start backup scheduler
 BackupService.initScheduler();
 
+// Start Cloudflare Tunnel automatically for Vercel / remote access
+TunnelService.startTunnel();
+
 server.listen(config.port, config.host, () => {
   const localIps = getLocalIpAddresses();
 

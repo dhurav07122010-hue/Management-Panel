@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
+import { config } from '../config/environment.js';
 
 export class TunnelService {
   private static tunnelProcess: ChildProcess | null = null;
@@ -26,10 +27,14 @@ export class TunnelService {
     console.log('[TunnelService] Launching Cloudflare Tunnel for management system...');
 
     try {
-      this.tunnelProcess = spawn(cloudflaredExe, ['tunnel', '--url', 'http://localhost:3001'], {
-        stdio: ['ignore', 'pipe', 'pipe'],
-        windowsHide: true
-      });
+      this.tunnelProcess = spawn(
+        cloudflaredExe,
+        ['tunnel', '--edge-ip-version', '4', '--url', `http://localhost:${config.port}`],
+        {
+          stdio: ['ignore', 'pipe', 'pipe'],
+          windowsHide: true
+        }
+      );
 
       const handleData = (data: Buffer) => {
         const text = data.toString('utf-8');

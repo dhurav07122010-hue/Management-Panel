@@ -16,5 +16,5 @@ if not exist "cloudflared.exe" (
 echo Starting tunnel to local port 3001...
 echo Look for the https://....trycloudflare.com URL below!
 echo.
-cloudflared.exe tunnel --url http://localhost:3001
+cloudflared.exe tunnel --edge-ip-version 4 --url http://localhost:3001
 pause

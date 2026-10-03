@@ -33,17 +33,38 @@ export function removeAuthToken(): void {
 
 let cachedAutoTunnelUrl: string | null = null;
 
-// Background auto-fetch of tunnel config on Vercel
-if (typeof window !== 'undefined') {
+const isBrowser = typeof window !== 'undefined';
+const isVercelHost = isBrowser && window.location.hostname.includes('vercel.app');
+const isLocalHost = isBrowser && (
+  window.location.hostname === 'localhost' ||
+  window.location.hostname === '127.0.0.1' ||
+  /^192\.168\./.test(window.location.hostname) ||
+  /^10\./.test(window.location.hostname)
+);
+
+// If local user has a stale auto-populated trycloudflare URL in localStorage, clear it
+if (isLocalHost) {
+  const currentSaved = localStorage.getItem(AGENT_URL_KEY);
+  if (currentSaved && currentSaved.includes('.trycloudflare.com')) {
+    localStorage.removeItem(AGENT_URL_KEY);
+  }
+}
+
+// Background auto-fetch of tunnel config (especially for remote / Vercel deployment)
+if (isBrowser) {
   fetch('/tunnel.json')
     .then((r) => r.json())
     .then((data: unknown) => {
       const payload = data as { url?: string };
-      if (payload && typeof payload.url === 'string') {
+      if (payload && typeof payload.url === 'string' && payload.url.startsWith('http')) {
         const validUrl = payload.url.replace(/\/$/, '');
         cachedAutoTunnelUrl = validUrl;
-        if (!localStorage.getItem(AGENT_URL_KEY)) {
-          localStorage.setItem(AGENT_URL_KEY, validUrl);
+        // On Vercel, keep localStorage in sync with newest tunnel URL
+        if (isVercelHost) {
+          const currentSaved = localStorage.getItem(AGENT_URL_KEY);
+          if (!currentSaved || currentSaved.includes('.trycloudflare.com')) {
+            localStorage.setItem(AGENT_URL_KEY, validUrl);
+          }
         }
       }
     })
@@ -51,18 +72,26 @@ if (typeof window !== 'undefined') {
 }
 
 export function getAgentBaseUrl(): string {
-  // 1. Check user override in localStorage (e.g. from Settings or Login)
-  const savedUrl = localStorage.getItem(AGENT_URL_KEY);
-  if (savedUrl) return savedUrl.replace(/\/$/, '');
+  // 1. For local/LAN hosts, default to direct same-host connection unless explicitly overridden with custom domain
+  const savedUrl = isBrowser ? localStorage.getItem(AGENT_URL_KEY) : null;
+  if (isLocalHost) {
+    if (savedUrl && !savedUrl.includes('.trycloudflare.com')) {
+      return savedUrl.replace(/\/$/, '');
+    }
+    return '';
+  }
 
-  // 2. Check dynamically discovered tunnel URL from public/tunnel.json
+  // 2. Dynamic live tunnel from tunnel.json
   if (cachedAutoTunnelUrl) return cachedAutoTunnelUrl;
 
-  // 3. Check Vite environment variable configured at build/deployment time
+  // 3. User override in localStorage (e.g. from Settings or Login)
+  if (savedUrl) return savedUrl.replace(/\/$/, '');
+
+  // 4. Vite environment variable configured at build/deployment time
   const envUrl = (import.meta as unknown as { env: Record<string, string> }).env?.VITE_AGENT_URL;
   if (envUrl) return envUrl.replace(/\/$/, '');
 
-  // 4. Fallback to same host (for local development or single-host serving)
+  // 5. Fallback to same host
   return '';
 }
 
