@@ -73,3 +73,12 @@ function shutdown(signal: string) {
 
 process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
+
+process.on('uncaughtException', (err) => {
+  console.error('[Agent Exception]', err);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[Agent Rejection]', reason);
+});
+
