@@ -7,6 +7,7 @@ import { BackupService } from './services/backup.service.js';
 import { closeDatabase } from './database/db.js';
 import { processManager } from './services/process.service.js';
 import { TunnelService } from './services/tunnel.service.js';
+import { PlayitService } from './services/playit.service.js';
 
 function getLocalIpAddresses(): string[] {
   const interfaces = os.networkInterfaces();
@@ -30,6 +31,9 @@ BackupService.initScheduler();
 
 // Start Cloudflare Tunnel automatically for Vercel
 TunnelService.startTunnel();
+
+// Ensure Playit.gg tunnel is running for player connections
+PlayitService.ensureRunning();
 
 // Check if server auto-start is configured
 processManager.checkAutoStart();
