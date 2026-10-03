@@ -127,11 +127,37 @@ export class ServerConfigService {
   /**
    * Parses a full Windows startCommand line into executable + string array arguments,
    * respecting quotes (e.g. `"C:\Program Files\Java\bin\java.exe" -Xms2G -jar fabric.jar nogui`).
+   * Automatically resolves and parses start.bat scripts if specified.
    */
-  public static parseStartCommand(cmdLine: string): { executable: string; args: string[] } {
+  public static parseStartCommand(cmdLine: string, serverDir?: string): { executable: string; args: string[] } {
     const trimmed = cmdLine.trim();
     if (!trimmed) {
       return { executable: 'java', args: ['-jar', 'fabric-server-launch.jar', 'nogui'] };
+    }
+
+    // If cmdLine specifies a .bat / .cmd file (e.g. "start.bat")
+    const isBatFile = trimmed.toLowerCase().endsWith('.bat') || trimmed.toLowerCase().endsWith('.cmd') || trimmed.toLowerCase() === 'start.bat';
+    if (isBatFile && serverDir) {
+      const batPath = path.isAbsolute(trimmed) ? trimmed : path.resolve(serverDir, trimmed);
+      if (fs.existsSync(batPath)) {
+        try {
+          const content = fs.readFileSync(batPath, 'utf-8');
+          const lines = content.split(/\r?\n/);
+          for (const rawLine of lines) {
+            const line = rawLine.trim();
+            // Skip comments and non-execution lines
+            if (!line || line.startsWith('@') || line.toLowerCase().startsWith('rem') || line.startsWith('::') || line.toLowerCase() === 'pause') {
+              continue;
+            }
+            if (line.includes('java') || line.includes('-jar')) {
+              // Recursively parse the Java command inside start.bat without the blocking pause
+              return this.parseStartCommand(line, serverDir);
+            }
+          }
+        } catch {
+          // fallback to standard token parsing
+        }
+      }
     }
 
     // Regex to split command string preserving double quotes
