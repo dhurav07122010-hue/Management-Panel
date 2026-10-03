@@ -1,0 +1,24 @@
+{
+  "name": "minecraft-server-panel-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspaces --if-present",
+    "dev:agent": "npm run dev --workspace=@mc-panel/agent",
+    "dev:web": "npm run dev --workspace=@mc-panel/web",
+    "build": "npm run build --workspaces --if-present",
+    "build:agent": "npm run build --workspace=@mc-panel/agent",
+    "build:web": "npm run build --workspace=@mc-panel/web",
+    "start": "npm run start --workspace=@mc-panel/agent",
+    "test": "npm run test --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4"
+  }
+}
