@@ -71,15 +71,41 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     headers['Content-Type'] = 'application/json';
   }
 
-  const response = await fetch(fullUrl, {
-    ...options,
-    headers,
-  });
+  let response: Response;
+  try {
+    response = await fetch(fullUrl, {
+      ...options,
+      headers,
+    });
+  } catch (netErr) {
+    const isVercel = window.location.hostname.includes('vercel.app');
+    const msg = isVercel && !baseUrl
+      ? 'Cannot connect to Server Agent. Please enter your Server Agent URL on the Login page.'
+      : `Cannot reach Server Agent at ${fullUrl}. Please check your connection.`;
+    const err = new Error(msg);
+    (err as unknown as { code?: string }).code = 'NETWORK_ERROR';
+    throw err;
+  }
 
-  const data: ApiResponse<T> = await response.json().catch(() => ({
-    success: false,
-    error: { code: 'NETWORK_ERROR', message: 'Failed to parse response from server' }
-  }));
+  const contentType = response.headers.get('content-type') || '';
+  let data: ApiResponse<T>;
+
+  if (contentType.includes('application/json')) {
+    data = await response.json().catch(() => ({
+      success: false,
+      error: { code: 'NETWORK_ERROR', message: 'Malformed JSON received from server' }
+    }));
+  } else {
+    // If receiving HTML (e.g. 404 from Vercel when baseUrl is empty or wrong)
+    const isVercel = window.location.hostname.includes('vercel.app');
+    const helpfulMsg = isVercel && !baseUrl
+      ? 'Server Agent not connected. Please enter your Windows Agent URL under "Server Agent Connection Settings".'
+      : `Server returned non-JSON response (${response.status}). Please check Agent endpoint.`;
+    data = {
+      success: false,
+      error: { code: 'INVALID_RESPONSE', message: helpfulMsg }
+    };
+  }
 
   if (!response.ok || !data.success) {
     if (response.status === 401) {

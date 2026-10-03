@@ -8,8 +8,10 @@ export const Login: React.FC = () => {
   const [username, setUsername] = useState('admin');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [agentUrl, setAgentAgentUrl] = useState(getAgentBaseUrl());
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const isVercelHost = typeof window !== 'undefined' && window.location.hostname.includes('vercel.app');
+  const initialAgentUrl = getAgentBaseUrl();
+  const [agentUrl, setAgentAgentUrl] = useState(initialAgentUrl);
+  const [showAdvanced, setShowAdvanced] = useState(isVercelHost && !initialAgentUrl);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
