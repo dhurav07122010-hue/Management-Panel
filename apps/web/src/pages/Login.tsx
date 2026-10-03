@@ -24,7 +24,7 @@ export const Login: React.FC = () => {
       const testUrl = target ? `${target}/api/health` : '/api/health';
       const controller = new AbortController();
       const id = setTimeout(() => controller.abort(), 4000);
-      const res = await fetch(testUrl, { signal: controller.signal });
+      const res = await fetch(testUrl, { signal: controller.signal, headers: { 'Bypass-Tunnel-Reminder': 'true' } });
       clearTimeout(id);
       if (res.ok) {
         setConnectionStatus('connected');
@@ -32,7 +32,7 @@ export const Login: React.FC = () => {
       }
       // Fallback check to /api/setup/status
       const fallbackUrl = target ? `${target}/api/setup/status` : '/api/setup/status';
-      const resFallback = await fetch(fallbackUrl);
+      const resFallback = await fetch(fallbackUrl, { headers: { 'Bypass-Tunnel-Reminder': 'true' } });
       if (resFallback.ok) {
         setConnectionStatus('connected');
         return true;

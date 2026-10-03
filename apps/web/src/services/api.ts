@@ -132,6 +132,7 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     : `${baseUrl}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
 
   const headers: Record<string, string> = {
+    'Bypass-Tunnel-Reminder': 'true',
     ...(options.headers as Record<string, string>),
   };
 

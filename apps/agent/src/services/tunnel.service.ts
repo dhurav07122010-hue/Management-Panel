@@ -1,96 +1,75 @@
-import { spawn, execSync, exec, type ChildProcess } from 'node:child_process';
+import localtunnel, { type Tunnel } from 'localtunnel';
 import path from 'node:path';
 import fs from 'node:fs';
+import { exec } from 'node:child_process';
 import { config } from '../config/environment.js';
 
 export class TunnelService {
-  private static tunnelProcess: ChildProcess | null = null;
+  private static tunnelInstance: Tunnel | null = null;
   private static currentUrl: string | null = null;
   private static shouldRun = false;
+  private static reconnectTimer: NodeJS.Timeout | null = null;
 
   public static getTunnelUrl(): string | null {
     return this.currentUrl;
   }
 
-  public static startTunnel(): void {
-    if (this.tunnelProcess) return;
+  public static async startTunnel(): Promise<void> {
+    if (this.tunnelInstance) return;
     this.shouldRun = true;
 
     const rootDir = path.resolve(process.cwd(), process.cwd().includes('apps') ? '../..' : '.');
-    const cloudflaredExe = path.join(rootDir, 'cloudflared.exe');
+    const preferredSubdomain = process.env.LOCALTUNNEL_SUBDOMAIN || 'mc-manager-dhurav';
 
-    if (!fs.existsSync(cloudflaredExe)) {
-      console.log('[TunnelService] cloudflared.exe not found at:', cloudflaredExe);
-      return;
-    }
-
-    if (process.platform === 'win32') {
-      try {
-        execSync('taskkill /IM cloudflared.exe /F', { stdio: 'ignore' });
-      } catch {
-        // ignore if not running
-      }
-    }
-
-    console.log('[TunnelService] Launching Cloudflare Tunnel for management system...');
+    console.log(`[TunnelService] Connecting Localtunnel for management system on port ${config.port} (subdomain: ${preferredSubdomain})...`);
 
     try {
-      this.tunnelProcess = spawn(
-        cloudflaredExe,
-        ['tunnel', '--no-autoupdate', '--metrics', 'localhost:0', '--edge-ip-version', '4', '--url', `http://localhost:${config.port}`],
-        {
-          stdio: ['ignore', 'pipe', 'pipe'],
-          windowsHide: true
-        }
-      );
+      const tunnel = await localtunnel(config.port, { subdomain: preferredSubdomain });
+      this.tunnelInstance = tunnel;
+      this.currentUrl = tunnel.url;
 
-      const handleData = (data: Buffer) => {
-        const text = data.toString('utf-8');
-        const match = text.match(/https:\/\/[a-zA-Z0-9-]+\.trycloudflare\.com/);
-        if (match && match[0] !== this.currentUrl) {
-          this.currentUrl = match[0];
-          console.log('\n============================================================');
-          console.log('   CLOUDFLARE TUNNEL ONLINE FOR VERCEL / REMOTE ACCESS!');
-          console.log('   Public Agent URL: ' + this.currentUrl);
-          console.log('============================================================\n');
+      console.log('\n============================================================');
+      console.log('   LOCALTUNNEL ONLINE (FIXED HTTPS ADDRESS)!');
+      console.log('   Public Agent URL: ' + this.currentUrl);
+      console.log('============================================================\n');
 
-          // Save to tunnel-url.txt for convenience
-          const urlFile = path.join(rootDir, 'tunnel-url.txt');
-          fs.writeFileSync(urlFile, this.currentUrl, 'utf-8');
+      const urlFile = path.join(rootDir, 'tunnel-url.txt');
+      fs.writeFileSync(urlFile, this.currentUrl, 'utf-8');
 
-          // Automatically commit and push tunnel.json to GitHub so Vercel can auto-connect
-          this.syncUrlToGitHub(rootDir, this.currentUrl);
-        } else if (text.includes('ERR') || text.includes('failed') || text.includes('error')) {
-          console.warn(`[TunnelService] ${text.trim()}`);
-        }
-      };
+      this.syncUrlToGitHub(rootDir, this.currentUrl);
 
-      this.tunnelProcess.stdout?.on('data', handleData);
-      this.tunnelProcess.stderr?.on('data', handleData);
-
-      this.tunnelProcess.on('exit', (code) => {
+      tunnel.on('close', () => {
+        console.log('[TunnelService] Localtunnel closed. Reconnecting in 5s...');
+        this.tunnelInstance = null;
         this.currentUrl = null;
-        this.tunnelProcess = null;
-        if (!this.shouldRun) return;
-        console.log(`[TunnelService] Tunnel exited with code ${code}. Reconnecting in 5s...`);
-        setTimeout(() => {
-          if (this.shouldRun) this.startTunnel();
-        }, 5000);
+        if (this.shouldRun) {
+          this.scheduleReconnect();
+        }
       });
 
-      this.tunnelProcess.on('error', (err) => {
-        console.error('[TunnelService] Tunnel error:', err.message);
-        this.tunnelProcess = null;
+      tunnel.on('error', (err) => {
+        console.warn('[TunnelService] Localtunnel error:', err?.message || err);
       });
-    } catch (e) {
-      this.tunnelProcess = null;
-      console.error('[TunnelService] Failed to spawn tunnel:', e);
+    } catch (err) {
+      console.error('[TunnelService] Failed to establish Localtunnel:', err instanceof Error ? err.message : err);
+      this.tunnelInstance = null;
+      if (this.shouldRun) {
+        this.scheduleReconnect();
+      }
     }
+  }
+
+  private static scheduleReconnect(): void {
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = setTimeout(() => {
+      if (this.shouldRun) {
+        this.startTunnel().catch(() => {});
+      }
+    }, 5000);
   }
 
   private static syncUrlToGitHub(rootDir: string, url: string): void {
     try {
-      // Write to public/tunnel.json inside apps/web so any deployed site or raw GitHub fetch sees it
       const webPublicFile = path.join(rootDir, 'apps/web/public/tunnel.json');
       fs.writeFileSync(webPublicFile, JSON.stringify({ url, updatedAt: new Date().toISOString() }, null, 2), 'utf-8');
 
@@ -99,7 +78,7 @@ export class TunnelService {
         fs.writeFileSync(distPublicFile, JSON.stringify({ url, updatedAt: new Date().toISOString() }, null, 2), 'utf-8');
       }
 
-      console.log(`[TunnelService] Syncing live tunnel URL to GitHub repository...`);
+      console.log(`[TunnelService] Syncing fixed tunnel URL to GitHub repository...`);
 
       const gitCommand = 'git add apps/web/public/tunnel.json tunnel-url.txt && git commit -m "chore: update live agent tunnel URL [skip ci]" && git pull --rebase origin main && git push origin main';
       exec(gitCommand, { cwd: rootDir }, (error, _stdout, stderr) => {
@@ -108,7 +87,7 @@ export class TunnelService {
           if (stderr) console.warn('[TunnelService] Git stderr:', stderr);
           return;
         }
-        console.log('[TunnelService] Successfully pushed live agent tunnel URL to GitHub.');
+        console.log('[TunnelService] Successfully pushed fixed agent tunnel URL to GitHub.');
       });
     } catch (err) {
       console.warn('[TunnelService] Error syncing tunnel URL to GitHub:', err);
@@ -117,19 +96,17 @@ export class TunnelService {
 
   public static stop(): void {
     this.shouldRun = false;
-    if (this.tunnelProcess) {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    if (this.tunnelInstance) {
       try {
-        if (process.platform === 'win32' && this.tunnelProcess.pid) {
-          spawn('taskkill', ['/pid', this.tunnelProcess.pid.toString(), '/T', '/F']);
-        } else {
-          this.tunnelProcess.kill('SIGKILL');
-        }
-      } catch {
-        // ignore
-      }
-      this.tunnelProcess = null;
+        this.tunnelInstance.close();
+      } catch {}
+      this.tunnelInstance = null;
     }
     this.currentUrl = null;
-    console.log('[TunnelService] Cloudflare tunnel stopped.');
+    console.log('[TunnelService] Localtunnel stopped.');
   }
 }
