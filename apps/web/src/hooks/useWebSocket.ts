@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { getAuthToken, getAgentBaseUrl } from '../services/api.js';
+import { getAuthToken, getAgentBaseUrl, refreshTunnelUrl } from '../services/api.js';
 import type { WebSocketMessage, ConsoleLine, ServerStats, PlayerInfo, ServerState } from '@mc-panel/types';
 
 interface UseWebSocketOptions {
@@ -82,7 +82,8 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
         // If not closed by auth failure, schedule reconnect
         if (event.code !== 4001 && event.code !== 4003) {
           setIsReconnecting(true);
-          reconnectTimeoutRef.current = setTimeout(() => {
+          reconnectTimeoutRef.current = setTimeout(async () => {
+            await refreshTunnelUrl();
             connect();
           }, 3000);
         }
@@ -94,7 +95,10 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
     } catch {
       setIsConnected(false);
       setIsReconnecting(true);
-      reconnectTimeoutRef.current = setTimeout(connect, 3000);
+      reconnectTimeoutRef.current = setTimeout(async () => {
+        await refreshTunnelUrl();
+        connect();
+      }, 3000);
     }
   }, []);
 

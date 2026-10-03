@@ -31,7 +31,9 @@ export function removeAuthToken(): void {
   localStorage.removeItem(TOKEN_KEY);
 }
 
+const GITHUB_TUNNEL_URL = 'https://raw.githubusercontent.com/dhurav07122010-hue/Management-Panel/main/apps/web/public/tunnel.json';
 let cachedAutoTunnelUrl: string | null = null;
+let tunnelFetchPromise: Promise<string | null> | null = null;
 
 const isBrowser = typeof window !== 'undefined';
 const isVercelHost = isBrowser && window.location.hostname.includes('vercel.app');
@@ -50,35 +52,38 @@ if (isLocalHost) {
   }
 }
 
-// Background auto-fetch of tunnel config (especially for remote / Vercel deployment)
-if (isBrowser) {
-  const syncFromData = (data: unknown) => {
-    const payload = data as { url?: string };
-    if (payload && typeof payload.url === 'string' && payload.url.startsWith('http')) {
-      const validUrl = payload.url.replace(/\/$/, '');
-      cachedAutoTunnelUrl = validUrl;
-      // On Vercel, keep localStorage in sync with newest tunnel URL
-      if (isVercelHost) {
-        const currentSaved = localStorage.getItem(AGENT_URL_KEY);
-        if (!currentSaved || currentSaved.includes('.trycloudflare.com')) {
-          localStorage.setItem(AGENT_URL_KEY, validUrl);
+export async function refreshTunnelUrl(): Promise<string | null> {
+  if (!isBrowser) return null;
+  if (tunnelFetchPromise) return tunnelFetchPromise;
+
+  tunnelFetchPromise = (async () => {
+    try {
+      const res = await fetch(`${GITHUB_TUNNEL_URL}?t=${Date.now()}`, { cache: 'no-store' });
+      if (res.ok) {
+        const data = (await res.json()) as { url?: string };
+        if (data && typeof data.url === 'string' && data.url.startsWith('http')) {
+          const liveUrl = data.url.trim().replace(/\/$/, '');
+          cachedAutoTunnelUrl = liveUrl;
+          if (!isLocalHost) {
+            localStorage.setItem(AGENT_URL_KEY, liveUrl);
+          }
+          return liveUrl;
         }
       }
+    } catch (e) {
+      console.warn('[API] Could not fetch live tunnel from GitHub:', e);
+    } finally {
+      tunnelFetchPromise = null;
     }
-  };
+    return null;
+  })();
 
-  fetch('/tunnel.json')
-    .then((r) => r.json())
-    .then(syncFromData)
-    .catch(() => {});
+  return tunnelFetchPromise;
+}
 
-  // If on Vercel, also query raw GitHub with cache-busting for instant live discovery
-  if (isVercelHost) {
-    fetch(`https://raw.githubusercontent.com/dhurav07122010-hue/Management-Panel/main/apps/web/public/tunnel.json?t=${Date.now()}`)
-      .then((r) => r.json())
-      .then(syncFromData)
-      .catch(() => {});
-  }
+// Background auto-fetch of live tunnel config for remote deployments
+if (isBrowser && (!isLocalHost || isVercelHost)) {
+  refreshTunnelUrl().catch(() => {});
 }
 
 export function getAgentBaseUrl(): string {
@@ -91,7 +96,7 @@ export function getAgentBaseUrl(): string {
     return '';
   }
 
-  // 2. Dynamic live tunnel from tunnel.json
+  // 2. Dynamic live tunnel from memory cache (fetched from GitHub)
   if (cachedAutoTunnelUrl) return cachedAutoTunnelUrl;
 
   // 3. User override in localStorage (e.g. from Settings or Login)
@@ -144,6 +149,19 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     });
   } catch (netErr) {
     clearTimeout(timeoutId);
+
+    // Auto-retry once if using tunnel URL and network failed (tunnel might have rotated)
+    const isRetry = Boolean(headers['x-retry-attempt']);
+    if (!isRetry && (!isLocalHost || baseUrl.includes('.trycloudflare.com'))) {
+      const freshUrl = await refreshTunnelUrl();
+      if (freshUrl && freshUrl !== baseUrl) {
+        return request<T>(endpoint, {
+          ...options,
+          headers: { ...headers, 'x-retry-attempt': '1' }
+        });
+      }
+    }
+
     const isVercel = window.location.hostname.includes('vercel.app');
     const msg = isVercel && !baseUrl
       ? 'Cannot connect to Server Agent. Please enter your Server Agent URL on the Login page.'
@@ -164,7 +182,18 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
       error: { code: 'NETWORK_ERROR', message: 'Malformed JSON received from server' }
     }));
   } else {
-    // If receiving HTML (e.g. 404 from Vercel when baseUrl is empty or wrong)
+    // If receiving HTML (e.g. Cloudflare error 502/530 or Vercel 404), attempt tunnel refresh
+    const isRetry = Boolean(headers['x-retry-attempt']);
+    if (!isRetry && (!isLocalHost || baseUrl.includes('.trycloudflare.com'))) {
+      const freshUrl = await refreshTunnelUrl();
+      if (freshUrl && freshUrl !== baseUrl) {
+        return request<T>(endpoint, {
+          ...options,
+          headers: { ...headers, 'x-retry-attempt': '1' }
+        });
+      }
+    }
+
     const isVercel = window.location.hostname.includes('vercel.app');
     const helpfulMsg = isVercel && !baseUrl
       ? 'Server Agent not connected. Please enter your Windows Agent URL under "Server Agent Connection Settings".'

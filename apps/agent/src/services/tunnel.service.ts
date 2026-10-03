@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn, execSync, type ChildProcess } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
 import { config } from '../config/environment.js';
@@ -22,6 +22,14 @@ export class TunnelService {
     if (!fs.existsSync(cloudflaredExe)) {
       console.log('[TunnelService] cloudflared.exe not found at:', cloudflaredExe);
       return;
+    }
+
+    if (process.platform === 'win32') {
+      try {
+        execSync('taskkill /IM cloudflared.exe /F', { stdio: 'ignore' });
+      } catch {
+        // ignore if not running
+      }
     }
 
     console.log('[TunnelService] Launching Cloudflare Tunnel for management system...');
@@ -81,14 +89,22 @@ export class TunnelService {
       const webPublicFile = path.join(rootDir, 'apps/web/public/tunnel.json');
       fs.writeFileSync(webPublicFile, JSON.stringify({ url, updatedAt: new Date().toISOString() }, null, 2), 'utf-8');
 
+      const distPublicFile = path.join(rootDir, 'apps/web/dist/tunnel.json');
+      if (fs.existsSync(path.dirname(distPublicFile))) {
+        fs.writeFileSync(distPublicFile, JSON.stringify({ url, updatedAt: new Date().toISOString() }, null, 2), 'utf-8');
+      }
+
       // Use git to push tunnel.json automatically
-      const gitCmd = spawn('git', ['add', 'apps/web/public/tunnel.json'], { cwd: rootDir });
+      const gitCmd = spawn('git', ['add', 'apps/web/public/tunnel.json', 'tunnel-url.txt'], { cwd: rootDir });
       gitCmd.on('close', (c1) => {
         if (c1 === 0) {
-          const commitCmd = spawn('git', ['commit', '-m', 'chore: update live agent tunnel URL'], { cwd: rootDir });
+          const commitCmd = spawn('git', ['commit', '-m', 'chore: update live agent tunnel URL [skip ci]'], { cwd: rootDir });
           commitCmd.on('close', (c2) => {
             if (c2 === 0) {
-              spawn('git', ['push', 'origin', 'main'], { cwd: rootDir });
+              const pullCmd = spawn('git', ['pull', '--rebase', 'origin', 'main'], { cwd: rootDir });
+              pullCmd.on('close', () => {
+                spawn('git', ['push', 'origin', 'main'], { cwd: rootDir });
+              });
             }
           });
         }

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth.js';
-import { getAgentBaseUrl, setAgentBaseUrl } from '../services/api.js';
-import { Server, Lock, User, AlertCircle, Eye, EyeOff, Globe, ChevronDown, ChevronUp } from 'lucide-react';
+import { getAgentBaseUrl, setAgentBaseUrl, refreshTunnelUrl } from '../services/api.js';
+import { Server, Lock, User, AlertCircle, Eye, EyeOff, Globe, ChevronDown, ChevronUp, RotateCw, CheckCircle } from 'lucide-react';
 
 export const Login: React.FC = () => {
   const [username, setUsername] = useState('admin');
@@ -14,18 +14,63 @@ export const Login: React.FC = () => {
   const [showAdvanced, setShowAdvanced] = useState(isVercelHost && !initialAgentUrl);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const checkAgentHealth = async (urlToCheck?: string) => {
+    setConnectionStatus('checking');
+    try {
+      const target = (urlToCheck !== undefined ? urlToCheck : agentUrl).trim().replace(/\/$/, '');
+      const testUrl = target ? `${target}/api/setup/status` : '/api/setup/status';
+      const controller = new AbortController();
+      const id = setTimeout(() => controller.abort(), 4000);
+      const res = await fetch(testUrl, { signal: controller.signal });
+      clearTimeout(id);
+      if (res.ok) {
+        setConnectionStatus('connected');
+        return true;
+      }
+    } catch {}
+    setConnectionStatus('disconnected');
+    return false;
+  };
 
   useEffect(() => {
-    const checkLiveUrl = () => {
-      const live = getAgentBaseUrl();
-      if (live && !agentUrl) {
-        setAgentAgentUrl(live);
+    let isMounted = true;
+    const init = async () => {
+      if (typeof window !== 'undefined') {
+        const isLocal = window.location.hostname === 'localhost' ||
+          window.location.hostname === '127.0.0.1' ||
+          /^192\.168\./.test(window.location.hostname);
+
+        if (!isLocal || isVercelHost) {
+          const live = await refreshTunnelUrl();
+          if (isMounted && live) {
+            setAgentAgentUrl(live);
+            await checkAgentHealth(live);
+            return;
+          }
+        }
+      }
+      if (isMounted) {
+        await checkAgentHealth();
       }
     };
-    checkLiveUrl();
-    const timer = setInterval(checkLiveUrl, 1000);
-    return () => clearInterval(timer);
-  }, [agentUrl]);
+    init();
+    return () => { isMounted = false; };
+  }, []);
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    const fresh = await refreshTunnelUrl();
+    if (fresh) {
+      setAgentAgentUrl(fresh);
+      await checkAgentHealth(fresh);
+    } else {
+      await checkAgentHealth();
+    }
+    setIsRefreshing(false);
+  };
 
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -56,6 +101,32 @@ export const Login: React.FC = () => {
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-white">MINECRAFT CONTROL</h1>
           <p className="text-sm text-slate-400">Sign in to manage your server</p>
+        </div>
+
+        {/* Live Agent Connection Status */}
+        <div className="flex items-center justify-between p-2.5 px-3.5 rounded-xl bg-slate-950/70 border border-slate-800 text-xs">
+          <div className="flex items-center gap-2">
+            {connectionStatus === 'connected' ? (
+              <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+            ) : connectionStatus === 'checking' ? (
+              <RotateCw className="w-4 h-4 text-amber-400 animate-spin shrink-0" />
+            ) : (
+              <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+            )}
+            <span className={connectionStatus === 'connected' ? 'text-emerald-400 font-medium' : connectionStatus === 'checking' ? 'text-amber-300' : 'text-red-400 font-medium'}>
+              {connectionStatus === 'connected' ? 'Agent Online' : connectionStatus === 'checking' ? 'Connecting to Agent...' : 'Agent Offline / Unreachable'}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            title="Refresh Live Tunnel Discovery"
+            className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-emerald-400 transition font-mono disabled:opacity-50"
+          >
+            <RotateCw className={`w-3 h-3 ${isRefreshing ? 'animate-spin' : ''}`} />
+            <span>Sync</span>
+          </button>
         </div>
 
         {error && (
