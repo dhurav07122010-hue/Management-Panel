@@ -1,17 +1,6 @@
-const CACHE_NAME = 'mc-panel-cache-v1';
-const STATIC_ASSETS = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  '/icons/icon.svg'
-];
+const CACHE_NAME = 'mc-panel-cache-v2';
 
-self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(STATIC_ASSETS);
-    })
-  );
+self.addEventListener('install', () => {
   self.skipWaiting();
 });
 
@@ -19,7 +8,7 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
       return Promise.all(
-        keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
+        keys.map((key) => caches.delete(key))
       );
     })
   );
@@ -30,30 +19,38 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // Network-only for API and WebSocket requests
-  if (url.pathname.startsWith('/api') || url.pathname.startsWith('/ws')) {
+  // Network-only for API, WebSocket, and dynamic JSON config
+  if (
+    url.pathname.startsWith('/api') ||
+    url.pathname.startsWith('/ws') ||
+    url.pathname.endsWith('.json')
+  ) {
     return;
   }
 
-  // Stale-while-revalidate or Network-first for frontend navigation and assets
+  // Network-first for frontend navigation and assets to prevent stale code blank screen
   event.respondWith(
-    caches.match(request).then((cachedResponse) => {
-      const fetchPromise = fetch(request).then((networkResponse) => {
-        if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
+    fetch(request)
+      .then((networkResponse) => {
+        if (
+          networkResponse &&
+          networkResponse.status === 200 &&
+          networkResponse.type === 'basic'
+        ) {
           const responseToCache = networkResponse.clone();
           caches.open(CACHE_NAME).then((cache) => {
             cache.put(request, responseToCache);
           });
         }
         return networkResponse;
-      }).catch(() => {
-        // Fallback for navigation requests when offline
+      })
+      .catch(async () => {
+        const cached = await caches.match(request);
+        if (cached) return cached;
         if (request.mode === 'navigate') {
-          return caches.match('/index.html');
+          return (await caches.match('/index.html')) || (await caches.match('/'));
         }
-      });
-
-      return cachedResponse || fetchPromise;
-    })
+        return new Response('Offline', { status: 503, statusText: 'Service Unavailable' });
+      })
   );
 });

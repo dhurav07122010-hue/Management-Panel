@@ -12,6 +12,7 @@ import { Files } from './pages/Files.js';
 import { Backups } from './pages/Backups.js';
 import { Geyser } from './pages/Geyser.js';
 import { Settings } from './pages/Settings.js';
+import { ErrorBoundary } from './components/ErrorBoundary.js';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, loading } = useAuth();
@@ -33,32 +34,34 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
 
 export const App: React.FC = () => {
   return (
-    <BrowserRouter>
-      <AuthProvider>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/setup" element={<SetupWizard />} />
+    <ErrorBoundary>
+      <BrowserRouter>
+        <AuthProvider>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route path="/setup" element={<SetupWizard />} />
 
-          <Route
-            element={
-              <ProtectedRoute>
-                <AppLayout />
-              </ProtectedRoute>
-            }
-          >
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/console" element={<Console />} />
-            <Route path="/players" element={<Players />} />
-            <Route path="/mods" element={<Mods />} />
-            <Route path="/files" element={<Files />} />
-            <Route path="/backups" element={<Backups />} />
-            <Route path="/geyser" element={<Geyser />} />
-            <Route path="/settings" element={<Settings />} />
-          </Route>
+            <Route
+              element={
+                <ProtectedRoute>
+                  <AppLayout />
+                </ProtectedRoute>
+              }
+            >
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/console" element={<Console />} />
+              <Route path="/players" element={<Players />} />
+              <Route path="/mods" element={<Mods />} />
+              <Route path="/files" element={<Files />} />
+              <Route path="/backups" element={<Backups />} />
+              <Route path="/geyser" element={<Geyser />} />
+              <Route path="/settings" element={<Settings />} />
+            </Route>
 
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </AuthProvider>
-    </BrowserRouter>
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </AuthProvider>
+      </BrowserRouter>
+    </ErrorBoundary>
   );
 };

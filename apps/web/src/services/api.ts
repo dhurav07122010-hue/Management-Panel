@@ -132,13 +132,18 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     headers['Content-Type'] = 'application/json';
   }
 
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 8000);
+
   let response: Response;
   try {
     response = await fetch(fullUrl, {
       ...options,
       headers,
+      signal: options.signal || controller.signal,
     });
   } catch (netErr) {
+    clearTimeout(timeoutId);
     const isVercel = window.location.hostname.includes('vercel.app');
     const msg = isVercel && !baseUrl
       ? 'Cannot connect to Server Agent. Please enter your Server Agent URL on the Login page.'
@@ -146,6 +151,8 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     const err = new Error(msg);
     (err as unknown as { code?: string }).code = 'NETWORK_ERROR';
     throw err;
+  } finally {
+    clearTimeout(timeoutId);
   }
 
   const contentType = response.headers.get('content-type') || '';
