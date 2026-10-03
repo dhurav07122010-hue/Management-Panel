@@ -6,6 +6,7 @@ import { AgentWebSocketServer } from './websocket/server.js';
 import { BackupService } from './services/backup.service.js';
 import { closeDatabase } from './database/db.js';
 import { processManager } from './services/process.service.js';
+import { TunnelService } from './services/tunnel.service.js';
 
 function getLocalIpAddresses(): string[] {
   const interfaces = os.networkInterfaces();
@@ -26,6 +27,9 @@ const wsServer = new AgentWebSocketServer(server);
 
 // Start backup scheduler
 BackupService.initScheduler();
+
+// Start Cloudflare Tunnel automatically for Vercel
+TunnelService.startTunnel();
 
 // Check if server auto-start is configured
 processManager.checkAutoStart();

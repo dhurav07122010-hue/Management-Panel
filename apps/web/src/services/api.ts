@@ -31,16 +31,38 @@ export function removeAuthToken(): void {
   localStorage.removeItem(TOKEN_KEY);
 }
 
+let cachedAutoTunnelUrl: string | null = null;
+
+// Background auto-fetch of tunnel config on Vercel
+if (typeof window !== 'undefined') {
+  fetch('/tunnel.json')
+    .then((r) => r.json())
+    .then((data: unknown) => {
+      const payload = data as { url?: string };
+      if (payload && typeof payload.url === 'string') {
+        const validUrl = payload.url.replace(/\/$/, '');
+        cachedAutoTunnelUrl = validUrl;
+        if (!localStorage.getItem(AGENT_URL_KEY)) {
+          localStorage.setItem(AGENT_URL_KEY, validUrl);
+        }
+      }
+    })
+    .catch(() => {});
+}
+
 export function getAgentBaseUrl(): string {
   // 1. Check user override in localStorage (e.g. from Settings or Login)
   const savedUrl = localStorage.getItem(AGENT_URL_KEY);
   if (savedUrl) return savedUrl.replace(/\/$/, '');
 
-  // 2. Check Vite environment variable configured at build/deployment time
+  // 2. Check dynamically discovered tunnel URL from public/tunnel.json
+  if (cachedAutoTunnelUrl) return cachedAutoTunnelUrl;
+
+  // 3. Check Vite environment variable configured at build/deployment time
   const envUrl = (import.meta as unknown as { env: Record<string, string> }).env?.VITE_AGENT_URL;
   if (envUrl) return envUrl.replace(/\/$/, '');
 
-  // 3. Fallback to same host (for local development or single-host serving)
+  // 4. Fallback to same host (for local development or single-host serving)
   return '';
 }
 
