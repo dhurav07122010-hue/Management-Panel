@@ -44,11 +44,13 @@ const isLocalHost = isBrowser && (
   /^10\./.test(window.location.hostname)
 );
 
-// If local user has a stale auto-populated trycloudflare URL in localStorage, clear it
-if (isLocalHost) {
+// If user has a stale auto-populated trycloudflare URL or obsolete localtunnel URL in localStorage, clear it
+if (isBrowser) {
   const currentSaved = localStorage.getItem(AGENT_URL_KEY);
-  if (currentSaved && currentSaved.includes('.trycloudflare.com')) {
-    localStorage.removeItem(AGENT_URL_KEY);
+  if (currentSaved) {
+    if ((isLocalHost && currentSaved.includes('.trycloudflare.com')) || currentSaved.includes('.loca.lt')) {
+      localStorage.removeItem(AGENT_URL_KEY);
+    }
   }
 }
 
@@ -64,6 +66,9 @@ export async function refreshTunnelUrl(): Promise<string | null> {
         if (data && typeof data.url === 'string' && data.url.startsWith('http')) {
           const liveUrl = data.url.trim().replace(/\/$/, '');
           cachedAutoTunnelUrl = liveUrl;
+          if (isVercelHost) {
+            localStorage.setItem(AGENT_URL_KEY, liveUrl);
+          }
           return liveUrl;
         }
       }
@@ -84,26 +89,24 @@ if (isBrowser && (!isLocalHost || isVercelHost)) {
 }
 
 export function getAgentBaseUrl(): string {
-  // 1. User manual override in localStorage (e.g. from Settings or Login "Server Agent Connection Settings")
-  const savedUrl = isBrowser ? localStorage.getItem(AGENT_URL_KEY) : null;
-  if (savedUrl && savedUrl.trim()) {
-    const cleanSaved = savedUrl.trim().replace(/\/$/, '');
-    // If local user had an old stale trycloudflare URL, clean it up
-    if (isLocalHost && cleanSaved.includes('.trycloudflare.com')) {
-      localStorage.removeItem(AGENT_URL_KEY);
-    } else {
-      return cleanSaved;
-    }
-  }
-
-  // 2. Direct same-host connection for local/LAN hosts
+  // 1. Direct same-host connection for local/LAN hosts
   if (isLocalHost) {
+    const savedUrl = isBrowser ? localStorage.getItem(AGENT_URL_KEY) : null;
+    if (savedUrl && !savedUrl.includes('.trycloudflare.com') && !savedUrl.includes('.loca.lt')) {
+      return savedUrl.trim().replace(/\/$/, '');
+    }
     return '';
   }
 
-  // 3. Dynamic live tunnel from memory cache (fetched from GitHub tunnel.json)
+  // 2. Dynamic live tunnel from memory cache (fetched from GitHub tunnel.json)
   if (cachedAutoTunnelUrl) {
     return cachedAutoTunnelUrl.trim().replace(/\/$/, '');
+  }
+
+  // 3. User manual override in localStorage
+  const savedUrl = isBrowser ? localStorage.getItem(AGENT_URL_KEY) : null;
+  if (savedUrl && savedUrl.trim() && !savedUrl.includes('.loca.lt')) {
+    return savedUrl.trim().replace(/\/$/, '');
   }
 
   // 4. Vite environment variable configured at build/deployment time
