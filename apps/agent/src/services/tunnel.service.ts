@@ -1,4 +1,4 @@
-import { spawn, execSync, type ChildProcess } from 'node:child_process';
+import { spawn, execSync, exec, type ChildProcess } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
 import { config } from '../config/environment.js';
@@ -101,25 +101,14 @@ export class TunnelService {
 
       console.log(`[TunnelService] Syncing live tunnel URL to GitHub repository...`);
 
-      // Use git to push tunnel.json automatically
-      const gitCmd = spawn('git', ['add', 'apps/web/public/tunnel.json', 'tunnel-url.txt'], { cwd: rootDir, shell: true });
-      gitCmd.on('close', (c1) => {
-        if (c1 === 0) {
-          const commitCmd = spawn('git', ['commit', '-m', 'chore: update live agent tunnel URL [skip ci]'], { cwd: rootDir, shell: true });
-          commitCmd.on('close', (c2) => {
-            if (c2 === 0) {
-              const pullCmd = spawn('git', ['pull', '--rebase', 'origin', 'main'], { cwd: rootDir, shell: true });
-              pullCmd.on('close', () => {
-                const pushCmd = spawn('git', ['push', 'origin', 'main'], { cwd: rootDir, shell: true });
-                pushCmd.on('close', (c3) => {
-                  if (c3 === 0) {
-                    console.log(`[TunnelService] Successfully pushed live agent tunnel URL to GitHub.`);
-                  }
-                });
-              });
-            }
-          });
+      const gitCommand = 'git add apps/web/public/tunnel.json tunnel-url.txt && git commit -m "chore: update live agent tunnel URL [skip ci]" && git pull --rebase origin main && git push origin main';
+      exec(gitCommand, { cwd: rootDir }, (error, _stdout, stderr) => {
+        if (error) {
+          console.warn('[TunnelService] Git sync warning:', error.message);
+          if (stderr) console.warn('[TunnelService] Git stderr:', stderr);
+          return;
         }
+        console.log('[TunnelService] Successfully pushed live agent tunnel URL to GitHub.');
       });
     } catch (err) {
       console.warn('[TunnelService] Error syncing tunnel URL to GitHub:', err);
